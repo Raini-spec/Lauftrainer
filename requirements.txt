@@ -1,0 +1,5 @@
+streamlit
+requests
+google-genai
+PyPDF2
+pandas
