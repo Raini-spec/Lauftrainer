@@ -9,10 +9,7 @@ import extra_streamlit_components as stx
 st.set_page_config(page_title="KI Trainer", layout="centered")
 
 # --- COOKIE MANAGER INITIALISIEREN ---
-@st.cache_resource
-def get_manager():
-    return stx.CookieManager()
-cookie_manager = get_manager()
+cookie_manager = stx.CookieManager()
 st.write("") # Wichtig, damit Cookies geladen werden
 
 st.title("🏃‍♂️🚴 KI Trainer: Strava & Gemini")
