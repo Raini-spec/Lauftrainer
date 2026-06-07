@@ -16,6 +16,7 @@ cookie_manager = get_manager()
 st.write("") # Wichtig, damit Cookies geladen werden
 
 st.title("🏃‍♂️🚴 KI Trainer: Strava & Gemini")
+st.caption("🔒 **Version 3.0** – Sicherer lokaler Speicher")
 
 # --- STATUS-VARIABLEN (für PDF & Chat, nur temporär pro Sitzung) ---
 if "messages" not in st.session_state:
