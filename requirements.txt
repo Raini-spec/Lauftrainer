@@ -3,3 +3,4 @@ requests
 google-genai
 PyPDF2
 pandas
+extra-streamlit-components
