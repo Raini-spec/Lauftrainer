@@ -214,7 +214,7 @@ else:
                             if belastung: prompt += f"- Aktuelle Belastung: {belastung}\n"
                             
                         try:
-                            antwort = client.models.generate_content(model='gemini-1.5-flash', contents=prompt)
+                            antwort = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
                             st.session_state.messages.append({"role": "assistant", "content": antwort.text})
                             st.session_state.trainingsplan = antwort.text
                         except Exception as e:
@@ -278,7 +278,7 @@ else:
                     """
                     
                     try:
-                        antwort = client.models.generate_content(model='gemini-1.5-flash', contents=sys_prompt)
+                        antwort = client.models.generate_content(model='gemini-2.5-flash', contents=sys_prompt)
                         st.markdown(antwort.text)
                         st.session_state.messages.append({"role": "assistant", "content": antwort.text})
                     except Exception as e:
