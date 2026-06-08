@@ -292,7 +292,7 @@ if st.session_state.get("daten_geladen", False) and "aktuelle_liste" in st.sessi
                     
                     try:
                         antwort = client.models.generate_content(model='gemini-2.5-flash', contents=sys_prompt)
-                        st.markdown(antwort.text)
                         st.session_state.messages.append({"role": "assistant", "content": antwort.text})
+                        st.session_state.trainingsplan = antwort.text
                     except Exception as e:
                         st.error(f"Genauer API-Fehler: {e}")
