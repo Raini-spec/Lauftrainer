@@ -181,6 +181,7 @@ else:
                 
                 if response.status_code == 200:
                     activities = response.json()
+                    st.session_state.aktuelle_liste = activities
                     aktivitaets_daten = ""
                     for act in activities:
                         typ = act.get('sport_type', act.get('type', 'Unbekannt'))
@@ -219,6 +220,44 @@ else:
                 else:
                     st.error("Fehler bei Strava-Abfrage.")
 
+import pandas as pd
+import io
+
+if st.session_state.get("daten_geladen", False) and "aktuelle_liste" in st.session_state:
+    st.subheader("💾 Trainingsdaten exportieren")
+    
+    # 1. Daten für Excel/CSV aufbereiten
+    df = pd.DataFrame(st.session_state.aktuelle_liste)
+    # Nur die wichtigsten Spalten behalten, falls gewünscht:
+    if not df.empty:
+        df_export = df[['start_date_local', 'type', 'name', 'distance', 'moving_time', 'average_heartrate']].copy()
+        df_export['distance'] = df_export['distance'] / 1000 # in km
+        df_export.columns = ['Datum', 'Typ', 'Name', 'Distanze (km)', 'Dauer (Sek)', 'Ø Puls']
+        
+        col_csv, col_xlsx = st.columns(2)
+        
+        # CSV Export
+        with col_csv:
+            csv = df_export.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Als CSV herunterladen",
+                data=csv,
+                file_name=f"strava_training_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv"
+            )
+            
+        # Excel Export
+        with col_xlsx:
+            towrite = io.BytesIO()
+            df_export.to_excel(towrite, index=False, header=True, engine='openpyxl')
+            towrite.seek(0)
+            st.download_button(
+                label="📥 Als Excel (XLSX) herunterladen",
+                data=towrite,
+                file_name=f"strava_training_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+    
     st.divider()
 
     st.subheader("💬 Chat mit deinem Coach")
