@@ -215,7 +215,7 @@ else:
                             if laktatschwelle: prompt += f"- Laktatschwelle: {laktatschwelle}\n"
                             if belastung: prompt += f"- Aktuelle Belastung: {belastung}\n"
                             
-                        antwort = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+                        antwort = client.models.generate_content(model='gemini-1.5-flash', contents=prompt)
                         st.session_state.messages.append({"role": "assistant", "content": antwort.text})
                 else:
                     st.error("Fehler bei Strava-Abfrage.")
@@ -275,7 +275,7 @@ if st.session_state.get("daten_geladen", False) and "trainingsplan" in st.sessio
                     """
                     
                     try:
-                        antwort = client.models.generate_content(model='gemini-2.5-flash', contents=sys_prompt)
+                        antwort = client.models.generate_content(model='gemini-1.5-flash', contents=sys_prompt)
                         st.session_state.messages.append({"role": "assistant", "content": antwort.text})
                         st.session_state.trainingsplan = antwort.text
                     except Exception as e:
