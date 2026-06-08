@@ -5,17 +5,18 @@ import time
 from datetime import datetime
 import PyPDF2
 import extra_streamlit_components as stx
+import json
 
 st.set_page_config(page_title="KI Trainer", layout="centered")
 
-# --- COOKIE MANAGER INITIALISIEREN ---
+# --- COOKIE MANAGER ---
 cookie_manager = stx.CookieManager()
 st.write("") # Wichtig, damit Cookies geladen werden
 
 st.title("🏃‍♂️🚴 KI Trainer: Strava & Gemini")
-st.caption("🔒 **Version 3.0** – Sicherer lokaler Speicher")
+st.caption("🔒 **Version 3.1** – Optimierter lokaler Speicher (Anti-Limit)")
 
-# --- STATUS-VARIABLEN (für PDF & Chat, nur temporär pro Sitzung) ---
+# --- STATUS-VARIABLEN ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "strava_context" not in st.session_state:
@@ -27,21 +28,37 @@ if "doc_name" not in st.session_state:
 if "doc_text" not in st.session_state:
     st.session_state.doc_text = ""
 
-# --- DATEN AUS LOKALEN COOKIES LESEN ---
-gemini_key = cookie_manager.get("gemini_key")
-client_id = cookie_manager.get("strava_client_id")
-client_secret = cookie_manager.get("strava_client_secret")
-access_token = cookie_manager.get("strava_access_token")
-refresh_token = cookie_manager.get("strava_refresh_token")
-expires_at = cookie_manager.get("strava_expires_at")
+# --- DATEN AUS DEM "PAKET"-COOKIE LESEN ---
+auth_cookie = cookie_manager.get("auth_paket")
+auth_data = {}
+if auth_cookie:
+    try:
+        auth_data = json.loads(auth_cookie) if isinstance(auth_cookie, str) else auth_cookie
+    except:
+        pass
 
-trainer_instructions = cookie_manager.get("trainer_instructions") or ""
-vo2max = cookie_manager.get("vo2max") or ""
-laktatschwelle = cookie_manager.get("laktatschwelle") or ""
-belastung = cookie_manager.get("belastung") or ""
+physio_cookie = cookie_manager.get("physio_paket")
+physio_data = {}
+if physio_cookie:
+    try:
+        physio_data = json.loads(physio_cookie) if isinstance(physio_cookie, str) else physio_cookie
+    except:
+        pass
+
+gemini_key = auth_data.get("gemini_key")
+client_id = auth_data.get("client_id")
+client_secret = auth_data.get("client_secret")
+access_token = auth_data.get("access_token")
+refresh_token = auth_data.get("refresh_token")
+expires_at = auth_data.get("expires_at")
+
+trainer_instructions = physio_data.get("instructions", "")
+vo2max = physio_data.get("vo2max", "")
+laktatschwelle = physio_data.get("laktat", "")
+belastung = physio_data.get("belastung", "")
 
 def get_valid_strava_token():
-    global access_token, refresh_token, expires_at
+    global access_token, refresh_token, expires_at, auth_data
     if not expires_at or time.time() > (float(expires_at) - 300):
         with st.spinner("Erneuere Strava-Zugriff..."):
             url = "https://www.strava.com/oauth/token"
@@ -55,17 +72,18 @@ def get_valid_strava_token():
             if res.status_code == 200:
                 data = res.json()
                 access_token = data["access_token"]
-                refresh_token = data["refresh_token"]
-                expires_at = data["expires_at"]
-                cookie_manager.set("strava_access_token", access_token)
-                cookie_manager.set("strava_refresh_token", refresh_token)
-                cookie_manager.set("strava_expires_at", str(expires_at))
+                
+                # Neues Paket speichern
+                auth_data["access_token"] = access_token
+                auth_data["refresh_token"] = data["refresh_token"]
+                auth_data["expires_at"] = data["expires_at"]
+                cookie_manager.set("auth_paket", json.dumps(auth_data))
             else:
                 st.error("Token-Refresh fehlgeschlagen.")
                 return None
     return access_token
 
-# --- LOGIN (Wenn keine Cookies auf dem Gerät gefunden werden) ---
+# --- LOGIN ---
 if not gemini_key or not access_token:
     st.info("👋 Willkommen! Richten wir deine App einmalig auf diesem Gerät ein.")
     input_gemini = st.text_input("1. Gemini API Key", type="password")
@@ -82,29 +100,35 @@ if not gemini_key or not access_token:
         url = "https://www.strava.com/oauth/token"
         payload = {"client_id": input_client_id, "client_secret": input_client_secret, "code": auth_code, "grant_type": "authorization_code"}
         res = requests.post(url, data=payload)
+        
         if res.status_code == 200:
             res_data = res.json()
-            cookie_manager.set("gemini_key", input_gemini)
-            cookie_manager.set("strava_client_id", input_client_id)
-            cookie_manager.set("strava_client_secret", input_client_secret)
-            cookie_manager.set("strava_access_token", res_data["access_token"])
-            cookie_manager.set("strava_refresh_token", res_data["refresh_token"])
-            cookie_manager.set("strava_expires_at", str(res_data["expires_at"]))
-            st.success("Erfolgreich! Lade die Seite neu.")
+            # Alles in EIN Paket packen
+            neues_paket = {
+                "gemini_key": input_gemini,
+                "client_id": input_client_id,
+                "client_secret": input_client_secret,
+                "access_token": res_data["access_token"],
+                "refresh_token": res_data["refresh_token"],
+                "expires_at": res_data["expires_at"]
+            }
+            cookie_manager.set("auth_paket", json.dumps(neues_paket))
+            st.success("Erfolgreich! Bitte lade die Seite jetzt einmal komplett neu (F5).")
         else:
-            st.error("Strava-Verbindung fehlgeschlagen.")
+            st.error("Strava-Verbindung fehlgeschlagen. Bitte neuen Code generieren!")
 
 # --- HAUPT-APP ---
 else:
     if st.sidebar.button("⚠️ Lokale Daten von diesem Gerät löschen"):
-        cookie_manager.delete("gemini_key")
-        cookie_manager.delete("strava_access_token")
+        cookie_manager.delete("auth_paket")
+        cookie_manager.delete("physio_paket")
         st.rerun()
 
     with st.expander("🧠 Trainer-Instruktionen bearbeiten"):
         new_instructions = st.text_area("Anweisungen", value=trainer_instructions, height=150)
         if st.button("💾 Instruktionen Lokal Speichern"):
-            cookie_manager.set("trainer_instructions", new_instructions)
+            physio_data["instructions"] = new_instructions
+            cookie_manager.set("physio_paket", json.dumps(physio_data))
             st.success("Gespeichert!")
 
     with st.expander("📊 Physiologische Werte"):
@@ -117,9 +141,10 @@ else:
             new_belastung = st.text_input("Aktuelle Belastung", value=belastung)
             
         if st.button("💾 Werte speichern"):
-            cookie_manager.set("vo2max", new_vo2max)
-            cookie_manager.set("laktatschwelle", new_laktat)
-            cookie_manager.set("belastung", new_belastung)
+            physio_data["vo2max"] = new_vo2max
+            physio_data["laktat"] = new_laktat
+            physio_data["belastung"] = new_belastung
+            cookie_manager.set("physio_paket", json.dumps(physio_data))
             st.success("Werte lokal gespeichert!")
 
     with st.expander("📄 Hintergrundwissen (PDF) verwalten"):
