@@ -14,7 +14,7 @@ cookie_manager = stx.CookieManager()
 st.write("") # Wichtig, damit Cookies geladen werden
 
 st.title("🏃‍♂️🚴 KI Trainer: Strava & Gemini")
-st.caption("🔒 **Version 3.1** – Optimierter lokaler Speicher (Anti-Limit)")
+st.caption("🔒 **Version 4.0** – Stabil mit Text-Export")
 
 # --- STATUS-VARIABLEN ---
 if "messages" not in st.session_state:
@@ -73,7 +73,6 @@ def get_valid_strava_token():
                 data = res.json()
                 access_token = data["access_token"]
                 
-                # Neues Paket speichern
                 auth_data["access_token"] = access_token
                 auth_data["refresh_token"] = data["refresh_token"]
                 auth_data["expires_at"] = data["expires_at"]
@@ -103,7 +102,6 @@ if not gemini_key or not access_token:
         
         if res.status_code == 200:
             res_data = res.json()
-            # Alles in EIN Paket packen
             neues_paket = {
                 "gemini_key": input_gemini,
                 "client_id": input_client_id,
@@ -147,8 +145,8 @@ else:
             cookie_manager.set("physio_paket", json.dumps(physio_data))
             st.success("Werte lokal gespeichert!")
 
-    with st.expander("📄 Hintergrundwissen (PDF) verwalten"):
-        st.info("💡 PDFs müssen pro Sitzung neu geladen werden, da sie zu groß für den Handy-Speicher sind.")
+    with st.expander("📄 Hintergrundwissen (PDF/TXT) verwalten"):
+        st.info("💡 Dokumente müssen pro Sitzung neu geladen werden.")
         if st.session_state.doc_name:
             st.success(f"**Aktiv:** {st.session_state.doc_name}")
             if st.button("🗑️ Dokument entfernen"):
@@ -176,7 +174,7 @@ else:
     if st.button("🚀 Neue Strava-Daten laden & analysieren"):
         strava_token = get_valid_strava_token()
         if strava_token:
-            with st.spinner("Lade Daten..."):
+            with st.spinner("Lade Daten von Strava..."):
                 response = requests.get(f"https://www.strava.com/api/v3/athlete/activities?per_page={anzahl_aktivitaeten}", headers={"Authorization": f"Bearer {strava_token}"})
                 
                 if response.status_code == 200:
@@ -202,7 +200,7 @@ else:
                     st.session_state.messages = [] 
                     st.session_state.daten_geladen = True
                     
-                    with st.spinner("KI analysiert..."):
+                    with st.spinner("KI analysiert und erstellt Trainingsplan..."):
                         client = genai.Client(api_key=gemini_key)
                         heute = datetime.now().strftime('%Y-%m-%d')
                         prompt = f"Analysiere diesen Trainingsverlauf präzise. Heute ist der {heute}.\nHistorie:\n{aktivitaets_daten}\n"
@@ -215,33 +213,38 @@ else:
                             if laktatschwelle: prompt += f"- Laktatschwelle: {laktatschwelle}\n"
                             if belastung: prompt += f"- Aktuelle Belastung: {belastung}\n"
                             
-                        antwort = client.models.generate_content(model='gemini-1.5-flash', contents=prompt)
-                        st.session_state.messages.append({"role": "assistant", "content": antwort.text})
+                        try:
+                            antwort = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+                            st.session_state.messages.append({"role": "assistant", "content": antwort.text})
+                            st.session_state.trainingsplan = antwort.text
+                        except Exception as e:
+                            st.error(f"Genauer Google API-Fehler: {e}")
                 else:
                     st.error("Fehler bei Strava-Abfrage.")
 
-if st.session_state.get("daten_geladen", False) and "trainingsplan" in st.session_state:
-    st.subheader("💾 Trainingsplan exportieren")
-    
-    plan_text = st.session_state.trainingsplan
-    col_md, col_txt = st.columns(2)
-    
-    with col_md:
-        st.download_button(
-            label="📥 Als Markdown (.md) herunterladen",
-            data=plan_text,
-            file_name=f"mein_trainingsplan_{datetime.now().strftime('%Y%m%d')}.md",
-            mime="text/markdown"
-        )
+    # --- EXPORT-BEREICH ---
+    if st.session_state.get("daten_geladen", False) and "trainingsplan" in st.session_state:
+        st.subheader("💾 Trainingsplan exportieren")
         
-    with col_txt:
-        st.download_button(
-            label="📥 Als Textdatei (.txt) herunterladen",
-            data=plan_text,
-            file_name=f"mein_trainingsplan_{datetime.now().strftime('%Y%m%d')}.txt",
-            mime="text/plain"
-        )
-    
+        plan_text = st.session_state.trainingsplan
+        col_md, col_txt = st.columns(2)
+        
+        with col_md:
+            st.download_button(
+                label="📥 Als Markdown (.md) speichern",
+                data=plan_text,
+                file_name=f"trainingsplan_{datetime.now().strftime('%Y%m%d')}.md",
+                mime="text/markdown"
+            )
+            
+        with col_txt:
+            st.download_button(
+                label="📥 Als Textdatei (.txt) speichern",
+                data=plan_text,
+                file_name=f"trainingsplan_{datetime.now().strftime('%Y%m%d')}.txt",
+                mime="text/plain"
+            )
+
     st.divider()
 
     st.subheader("💬 Chat mit deinem Coach")
@@ -275,8 +278,8 @@ if st.session_state.get("daten_geladen", False) and "trainingsplan" in st.sessio
                     """
                     
                     try:
-                        antwort = client.models.generate_content(model='gemini-1.5-flash', contents=sys_prompt)
+                        antwort = client.models.generate_content(model='gemini-2.5-flash', contents=sys_prompt)
+                        st.markdown(antwort.text)
                         st.session_state.messages.append({"role": "assistant", "content": antwort.text})
-                        st.session_state.trainingsplan = antwort.text
                     except Exception as e:
                         st.error(f"Genauer API-Fehler: {e}")
