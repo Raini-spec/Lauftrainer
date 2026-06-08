@@ -289,9 +289,10 @@ if st.session_state.get("daten_geladen", False) and "aktuelle_liste" in st.sessi
                     Bisheriger Chat:
                     {history}
                     """
-           try:
-                    antwort = client.models.generate_content(model='gemini-2.0-flash', contents=sys_prompt)
-                    st.markdown(antwort.text)
-                    st.session_state.messages.append({"role": "assistant", "content": antwort.text})
-           except Exception as e:
-                    st.error(f"Genauer API-Fehler: {e}")
+                    
+                    try:
+                        antwort = client.models.generate_content(model='gemini-2.0-flash', contents=sys_prompt)
+                        st.markdown(antwort.text)
+                        st.session_state.messages.append({"role": "assistant", "content": antwort.text})
+                    except Exception as e:
+                        st.error(f"Genauer API-Fehler: {e}")
