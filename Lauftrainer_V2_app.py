@@ -99,7 +99,8 @@ if not gemini_key or not access_token:
                     content = json.load(config_file)
                     if content.get("master_pw") == master_pw:
                         cookie_manager.set("auth_paket", json.dumps(content))
-                        st.success("Erfolgreich entsperrt! Bitte lade die Seite neu (F5).")
+                        st.success("Erfolgreich! Lade App...")
+                        time.sleep(1.5)
                         st.rerun()
                     else:
                         st.error("Das eingegebene Passwort ist falsch.")
