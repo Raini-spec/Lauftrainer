@@ -15,7 +15,7 @@ cookie_manager = stx.CookieManager()
 st.write("") # Wichtig, damit Cookies geladen werden
 
 st.title("🏃‍♂️🚴 KI Trainer: Strava & Gemini")
-st.caption("🔒 **Version 4.10** – Multi-Upload für bis zu 5 Dateien (Screenshots/PDFs/Texte)")
+st.caption("🔒 **Version 4.11** – Dauerhafter Datei-Uploader für einfaches Hinzufügen")
 
 # --- STATUS-VARIABLEN ---
 if "messages" not in st.session_state:
@@ -181,7 +181,8 @@ else:
         
         keys_to_clear = [
             "messages", "strava_context", "daten_geladen", "doc_names", "doc_texts", "doc_images",
-            "temp_auth_data", "pending_auth", "auto_config_json", "heute_plan", "woche_plan", "trainingsplan"
+            "temp_auth_data", "pending_auth", "auto_config_json", "heute_plan", "woche_plan", "trainingsplan",
+            "upload_knowledge_files"
         ]
         for key in keys_to_clear:
             if key in st.session_state:
@@ -214,37 +215,32 @@ else:
             st.success("Werte lokal gespeichert!")
 
     with st.expander("📄 Hintergrundwissen (Bilder/PDF/TXT) verwalten"):
-        st.info("💡 Lade hier bis zu 5 Dateien (Screenshots oder PDFs/Texte) gleichzeitig hoch.")
-        if st.session_state.doc_names:
+        st.info("💡 Lade hier bis zu 5 Dateien einzeln oder zusammen hoch. Das Feld bleibt nun dauerhaft sichtbar.")
+        
+        # Uploader bleibt dauerhaft sichtbar!
+        uploaded_files = st.file_uploader("Dateien hochladen", type=["txt", "md", "pdf", "png", "jpg", "jpeg"], accept_multiple_files=True, key="upload_knowledge_files")
+        
+        st.session_state.doc_names = []
+        st.session_state.doc_texts = []
+        st.session_state.doc_images = []
+        
+        if uploaded_files:
+            for f in uploaded_files[:5]:
+                st.session_state.doc_names.append(f.name)
+                if f.name.lower().endswith(('.png', '.jpg', '.jpeg')):
+                    st.session_state.doc_images.append(Image.open(f))
+                elif f.name.lower().endswith(".pdf"):
+                    text = ""
+                    reader = PyPDF2.PdfReader(f)
+                    for page in reader.pages:
+                        text += page.extract_text() + "\n"
+                    st.session_state.doc_texts.append(text)
+                else:
+                    st.session_state.doc_texts.append(f.read().decode("utf-8"))
+            
             st.success(f"**Aktiv ({len(st.session_state.doc_names)} Datei/en):** {', '.join(st.session_state.doc_names)}")
-            if st.button("🗑️ Dokumente entfernen", key="btn_remove_doc"):
-                st.session_state.doc_names = []
-                st.session_state.doc_texts = []
-                st.session_state.doc_images = []
-                st.rerun()
-        else:
-            uploaded_files = st.file_uploader("Dateien hochladen", type=["txt", "md", "pdf", "png", "jpg", "jpeg"], accept_multiple_files=True, key="upload_knowledge_files")
-            if uploaded_files:
-                st.session_state.doc_names = []
-                st.session_state.doc_texts = []
-                st.session_state.doc_images = []
-                
-                # Auf max 5 Dateien begrenzen
-                for f in uploaded_files[:5]:
-                    st.session_state.doc_names.append(f.name)
-                    if f.name.lower().endswith(('.png', '.jpg', '.jpeg')):
-                        st.session_state.doc_images.append(Image.open(f))
-                    elif f.name.lower().endswith(".pdf"):
-                        text = ""
-                        reader = PyPDF2.PdfReader(f)
-                        for page in reader.pages:
-                            text += page.extract_text() + "\n"
-                        st.session_state.doc_texts.append(text)
-                    else:
-                        st.session_state.doc_texts.append(f.read().decode("utf-8"))
-                        
-                st.success("Dateien temporär geladen!")
-                st.rerun()
+            if len(uploaded_files) > 5:
+                st.warning("⚠️ Es wurden mehr als 5 Dateien ausgewählt. Nur die ersten 5 werden berücksichtigt.")
 
     anzahl_aktivitaeten = st.slider("Historie (Anzahl Aktivitäten)", 5, 50, 30, key="slider_history")
 
