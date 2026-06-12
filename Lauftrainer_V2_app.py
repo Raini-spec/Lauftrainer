@@ -15,7 +15,7 @@ cookie_manager = stx.CookieManager()
 st.write("") # Wichtig, damit Cookies geladen werden
 
 st.title("🏃‍♂️🚴 KI Trainer: Strava & Gemini")
-st.caption("🔒 **Version 4.11** – Dauerhafter Datei-Uploader für einfaches Hinzufügen")
+st.caption("🔒 **Version 4.12** – Intelligentes Plan-Gedächtnis & Update-Funktion")
 
 # --- STATUS-VARIABLEN ---
 if "messages" not in st.session_state:
@@ -54,6 +54,11 @@ if physio_cookie:
         physio_data = json.loads(physio_cookie) if isinstance(physio_cookie, str) else physio_cookie
     except:
         pass
+
+# --- PLAN AUS COOKIE LADEN ---
+saved_plan = physio_data.get("current_plan", "")
+if "trainingsplan" not in st.session_state and saved_plan:
+    st.session_state.trainingsplan = saved_plan
 
 gemini_key = auth_data.get("gemini_key")
 client_id = auth_data.get("client_id")
@@ -217,7 +222,6 @@ else:
     with st.expander("📄 Hintergrundwissen (Bilder/PDF/TXT) verwalten"):
         st.info("💡 Lade hier bis zu 5 Dateien einzeln oder zusammen hoch. Das Feld bleibt nun dauerhaft sichtbar.")
         
-        # Uploader bleibt dauerhaft sichtbar!
         uploaded_files = st.file_uploader("Dateien hochladen", type=["txt", "md", "pdf", "png", "jpg", "jpeg"], accept_multiple_files=True, key="upload_knowledge_files")
         
         st.session_state.doc_names = []
@@ -242,9 +246,11 @@ else:
             if len(uploaded_files) > 5:
                 st.warning("⚠️ Es wurden mehr als 5 Dateien ausgewählt. Nur die ersten 5 werden berücksichtigt.")
 
+    st.divider()
+    st.subheader("🎯 1. Strava-Daten abrufen")
     anzahl_aktivitaeten = st.slider("Historie (Anzahl Aktivitäten)", 5, 50, 30, key="slider_history")
 
-    if st.button("🚀 Neue Strava-Daten laden & analysieren", key="btn_load_and_analyze"):
+    if st.button("⬇️ Neueste Strava-Daten laden", key="btn_load_strava"):
         strava_token = get_valid_strava_token()
         if strava_token:
             with st.spinner("Lade Daten von Strava..."):
@@ -252,7 +258,6 @@ else:
                 
                 if response.status_code == 200:
                     activities = response.json()
-                    st.session_state.aktuelle_liste = activities
                     aktivitaets_daten = ""
                     for act in activities:
                         typ = act.get('sport_type', act.get('type', 'Unbekannt'))
@@ -270,116 +275,81 @@ else:
                         aktivitaets_daten += f"- [{start}] [{typ}] {act.get('name')}: {dist_km:.2f} km | {info} | Ø Puls: {puls}\n"
                     
                     st.session_state.strava_context = aktivitaets_daten
-                    st.session_state.messages = [] 
                     st.session_state.daten_geladen = True
-                    
-                    with st.spinner("KI analysiert und erstellt Trainingsplan..."):
-                        client = genai.Client(api_key=gemini_key)
-                        heute = datetime.now().strftime('%Y-%m-%d')
-                        prompt = f"Analysiere diesen Trainingsverlauf präzise. Heute ist der {heute}.\nHistorie:\n{aktivitaets_daten}\n"
-                        
-                        if trainer_instructions: prompt += f"\nAnweisungen:\n{trainer_instructions}"
-                        if st.session_state.doc_texts: 
-                            kombinierter_text = "\n\n".join(st.session_state.doc_texts)
-                            prompt += f"\nHintergrunddaten (Text):\n{kombinierter_text}"
-                        if vo2max or laktatschwelle or belastung:
-                            prompt += "\nPhysiologische Kennwerte:\n"
-                            if vo2max: prompt += f"- VO2max: {vo2max}\n"
-                            if laktatschwelle: prompt += f"- Laktatschwelle: {laktatschwelle}\n"
-                            if belastung: prompt += f"- Aktuelle Belastung: {belastung}\n"
-                            
-                        request_contents = [prompt]
-                        if st.session_state.doc_images:
-                            request_contents.extend(st.session_state.doc_images)
-                            
-                        try:
-                            antwort = client.models.generate_content(model='gemini-2.5-flash', contents=request_contents)
-                            st.session_state.messages.append({"role": "assistant", "content": antwort.text})
-                            st.session_state.trainingsplan = antwort.text
-                        except Exception as e:
-                            st.error(f"Genauer Google API-Fehler: {e}")
+                    st.success("Daten erfolgreich geladen! Wähle nun eine Option für deinen Trainingsplan.")
                 else:
                     st.error("Fehler bei Strava-Abfrage.")
 
-    # --- EXPORT-BEREICH ---
-    if st.session_state.get("daten_geladen", False) and "trainingsplan" in st.session_state:
-        st.subheader("💾 Trainingsplan exportieren")
-        
-        plan_text = st.session_state.trainingsplan
-        col_md, col_txt = st.columns(2)
-        
-        with col_md:
-            st.download_button(
-                label="📥 Als Markdown (.md) speichern",
-                data=plan_text,
-                file_name=f"trainingsplan_{datetime.now().strftime('%Y%m%d')}.md",
-                mime="text/markdown",
-                key="btn_download_md"
-            )
-            
-        with col_txt:
-            st.download_button(
-                label="📥 Als Textdatei (.txt) speichern",
-                data=plan_text,
-                file_name=f"trainingsplan_{datetime.now().strftime('%Y%m%d')}.txt",
-                mime="text/plain",
-                key="btn_download_txt"
-            )
-
-    # --- SCHNELL-CHECK: TAGES- & WOCHENPLAN ---
-    if st.session_state.get("daten_geladen", False):
-        st.divider()
-        st.subheader("🗓️ Coach Schnell-Check")
-        col1, col2 = st.columns(2)
+    if st.session_state.get("daten_geladen"):
+        st.subheader("🗓️ 2. Trainingsplan steuern")
+        col_neu, col_update = st.columns(2)
         
         client = genai.Client(api_key=gemini_key)
         heute = datetime.now().strftime('%Y-%m-%d')
         
-        if col1.button("🚀 Training heute", key="btn_check_today"):
-            with st.spinner("Erstelle Tagesplan..."):
-                prompt_heute = f"""Gib mir nur für HEUTE ein konkretes Training. 
-                Instruktionen: {trainer_instructions}
-                Daten: {st.session_state.strava_context}
-                Physiologie: VO2max:{vo2max}, Laktat:{laktatschwelle}, Belastung:{belastung}
-                Regel: Max. 3 Sätze, keine Begrüßung, nur das Wesentliche (Dauer, Intensität, Pace).
-                Nutze auch alle hochgeladenen Dokumente und Bilder für deine Bewertung."""
-                
-                request_contents = [prompt_heute]
-                if st.session_state.doc_images:
-                    request_contents.extend(st.session_state.doc_images)
+        with col_neu:
+            if st.button("✨ Komplett neuen Plan erstellen", key="btn_new_plan"):
+                with st.spinner("KI analysiert von Null und erstellt neuen Plan..."):
+                    prompt = f"Erstelle einen neuen Trainingsplan. Heute ist der {heute}.\nHistorie:\n{st.session_state.strava_context}\n"
+                    if trainer_instructions: prompt += f"\nAnweisungen:\n{trainer_instructions}"
+                    if st.session_state.doc_texts: prompt += f"\nHintergrunddaten:\n" + "\n".join(st.session_state.doc_texts)
+                    if vo2max or laktatschwelle or belastung:
+                        prompt += f"\nPhysiologie: VO2max:{vo2max}, Laktat:{laktatschwelle}, Belastung:{belastung}\n"
                     
-                try:
-                    antwort = client.models.generate_content(model='gemini-2.5-flash', contents=request_contents)
-                    st.session_state.heute_plan = antwort.text
-                except Exception as e:
-                    st.error(f"Fehler: {e}")
+                    req = [prompt]
+                    if st.session_state.doc_images: req.extend(st.session_state.doc_images)
+                        
+                    try:
+                        antwort = client.models.generate_content(model='gemini-2.5-flash', contents=req)
+                        st.session_state.trainingsplan = antwort.text
+                        physio_data["current_plan"] = antwort.text
+                        cookie_manager.set("physio_paket", json.dumps(physio_data), key="cookie_set_newplan")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Fehler: {e}")
 
-        if col2.button("📅 Wochenplan erstellen", key="btn_check_week"):
-            with st.spinner("Erstelle Wochenplan..."):
-                prompt_woche = f"""Erstelle einen kompakten Trainingsplan für die nächsten 7 Tage.
-                Instruktionen: {trainer_instructions}
-                Daten: {st.session_state.strava_context}
-                Physiologie: VO2max:{vo2max}, Laktat:{laktatschwelle}, Belastung:{belastung}
-                Format: Kurze Liste (Tag: Training). Fokus auf Effizienz, keine Begrüßung.
-                Nutze auch alle hochgeladenen Dokumente und Bilder für deine Planung."""
-                
-                request_contents = [prompt_woche]
-                if st.session_state.doc_images:
-                    request_contents.extend(st.session_state.doc_images)
-                    
-                try:
-                    antwort = client.models.generate_content(model='gemini-2.5-flash', contents=request_contents)
-                    st.session_state.woche_plan = antwort.text
-                except Exception as e:
-                    st.error(f"Fehler: {e}")
+        with col_update:
+            if st.session_state.get("trainingsplan"):
+                if st.button("🔄 Aktuellen Plan intelligent anpassen", key="btn_update_plan"):
+                    with st.spinner("KI vergleicht alte Struktur mit neuen Daten..."):
+                        prompt = f"""Du bist ein Ausdauer-Coach. Heute ist der {heute}.
+                        Passe den folgenden BESTEHENDEN Trainingsplan an die neuesten Trainingsdaten an.
+                        Regel: Behalte die Struktur des alten Plans weitestgehend bei. Passe nur Einheiten an, falls ich abgewichen bin oder die neuesten Daten (z.B. Erschöpfung) eine Änderung erfordern.
+                        
+                        BESTEHENDER PLAN:
+                        {st.session_state.trainingsplan}
+                        
+                        NEUESTE DATEN:
+                        {st.session_state.strava_context}
+                        """
+                        if trainer_instructions: prompt += f"\nAnweisungen:\n{trainer_instructions}"
+                        if st.session_state.doc_texts: prompt += f"\nHintergrunddaten:\n" + "\n".join(st.session_state.doc_texts)
+                        if vo2max or laktatschwelle or belastung:
+                            prompt += f"\nPhysiologie: VO2max:{vo2max}, Laktat:{laktatschwelle}, Belastung:{belastung}\n"
+                        
+                        req = [prompt]
+                        if st.session_state.doc_images: req.extend(st.session_state.doc_images)
+                            
+                        try:
+                            antwort = client.models.generate_content(model='gemini-2.5-flash', contents=req)
+                            st.session_state.trainingsplan = antwort.text
+                            physio_data["current_plan"] = antwort.text
+                            cookie_manager.set("physio_paket", json.dumps(physio_data), key="cookie_set_updateplan")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Fehler: {e}")
 
-        if "heute_plan" in st.session_state:
-            with st.expander("🏃‍♂️ Dein Training für heute", expanded=True):
-                st.write(st.session_state.heute_plan)
-                
-        if "woche_plan" in st.session_state:
-            with st.expander("📅 Dein Wochenplan", expanded=True):
-                st.write(st.session_state.woche_plan)
+    # --- PLAN ANZEIGEN & EXPORTIEREN ---
+    if st.session_state.get("trainingsplan"):
+        st.divider()
+        st.subheader("📋 Dein aktueller Trainingsplan")
+        st.write(st.session_state.trainingsplan)
+        
+        col_md, col_txt = st.columns(2)
+        with col_md:
+            st.download_button("📥 Als Markdown (.md) speichern", data=st.session_state.trainingsplan, file_name="trainingsplan.md", mime="text/markdown", key="dl_md")
+        with col_txt:
+            st.download_button("📥 Als Textdatei (.txt) speichern", data=st.session_state.trainingsplan, file_name="trainingsplan.txt", mime="text/plain", key="dl_txt")
 
     st.divider()
 
@@ -388,39 +358,37 @@ else:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    if st.session_state.get("daten_geladen", False): 
-        if user_input := st.chat_input("Tippe deine Nachricht an den Coach...", key="input_chat_box"):
-            st.session_state.messages.append({"role": "user", "content": user_input})
-            with st.chat_message("user"):
-                st.markdown(user_input)
+    if user_input := st.chat_input("Tippe deine Nachricht an den Coach...", key="input_chat_box"):
+        st.session_state.messages.append({"role": "user", "content": user_input})
+        with st.chat_message("user"):
+            st.markdown(user_input)
+            
+        with st.chat_message("assistant"):
+            with st.spinner("Tippt..."):
+                client = genai.Client(api_key=gemini_key)
+                history = "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.messages])
+                heute = datetime.now().strftime('%Y-%m-%d')
                 
-            with st.chat_message("assistant"):
-                with st.spinner("Tippt..."):
-                    client = genai.Client(api_key=gemini_key)
-                    history = "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.messages])
-                    heute = datetime.now().strftime('%Y-%m-%d')
+                sys_prompt = f"""
+                Du bist ein Ausdauer-Coach. Heute ist der {heute}. Beantworte die Nachricht.
+                Aktueller Plan: {st.session_state.get('trainingsplan', 'Noch kein Plan.')}
+                Neueste Strava-Daten: {st.session_state.strava_context}
+                Instruktionen: {trainer_instructions}
+                VO2max: {vo2max}, Laktat: {laktatschwelle}, Belastung: {belastung}
+                """
+                
+                if st.session_state.doc_texts: 
+                    sys_prompt += "\nHintergrunddaten (Text):\n" + "\n\n".join(st.session_state.doc_texts)
+                
+                sys_prompt += f"\n\nBisheriger Chat:\n{history}\n\nBerücksichtige auch die vom User hochgeladenen Bilder."
+                
+                request_contents = [sys_prompt]
+                if st.session_state.doc_images:
+                    request_contents.extend(st.session_state.doc_images)
                     
-                    sys_prompt = f"""
-                    Du bist ein Ausdauer-Coach. Heute ist der {heute}. Beantworte die Nachricht.
-                    Trainingsdaten:\n{st.session_state.strava_context}
-                    Instruktionen:\n{trainer_instructions}
-                    VO2max: {vo2max}
-                    Laktatschwelle: {laktatschwelle}
-                    Aktuelle Belastung: {belastung}
-                    """
-                    
-                    if st.session_state.doc_texts: 
-                        sys_prompt += "\nHintergrunddaten (Text):\n" + "\n\n".join(st.session_state.doc_texts)
-                    
-                    sys_prompt += f"\n\nBisheriger Chat:\n{history}\n\nBerücksichtige auch die vom User hochgeladenen Bilder."
-                    
-                    request_contents = [sys_prompt]
-                    if st.session_state.doc_images:
-                        request_contents.extend(st.session_state.doc_images)
-                        
-                    try:
-                        antwort = client.models.generate_content(model='gemini-2.5-flash', contents=request_contents)
-                        st.markdown(antwort.text)
-                        st.session_state.messages.append({"role": "assistant", "content": antwort.text})
-                    except Exception as e:
-                        st.error(f"Genauer API-Fehler: {e}")
+                try:
+                    antwort = client.models.generate_content(model='gemini-2.5-flash', contents=request_contents)
+                    st.markdown(antwort.text)
+                    st.session_state.messages.append({"role": "assistant", "content": antwort.text})
+                except Exception as e:
+                    st.error(f"Genauer API-Fehler: {e}")
