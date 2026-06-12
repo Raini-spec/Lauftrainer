@@ -14,7 +14,7 @@ cookie_manager = stx.CookieManager()
 st.write("") # Wichtig, damit Cookies geladen werden
 
 st.title("🏃‍♂️🚴 KI Trainer: Strava & Gemini")
-st.caption("🔒 **Version 4.0** – Stabil mit Text-Export")
+st.caption("🔒 **Version 4.1** – Passwort-Login & Expander-Schnellcheck")
 
 # --- STATUS-VARIABLEN ---
 if "messages" not in st.session_state:
@@ -82,38 +82,27 @@ def get_valid_strava_token():
                 return None
     return access_token
 
-# --- LOGIN ---
+# --- LOGIN MIT CONFIG-DATEI & PASSWORT ---
 if not gemini_key or not access_token:
-    st.info("👋 Willkommen! Richten wir deine App einmalig auf diesem Gerät ein.")
-    input_gemini = st.text_input("1. Gemini API Key", type="password")
-    input_client_id = st.text_input("2. Strava Client-ID")
-    input_client_secret = st.text_input("3. Geheimer Clientschlüssel", type="password")
+    st.info("👋 Willkommen! Richten wir deine App mit deiner Konfigurationsdatei ein.")
     
-    if input_client_id:
-        auth_url = f"https://www.strava.com/oauth/authorize?client_id={input_client_id}&response_type=code&redirect_uri=http://localhost/exchange_token&approval_prompt=force&scope=activity:read_all"
-        st.markdown(f"[👉 Klicke hier, um Strava freizugeben]({auth_url})")
+    config_file = st.file_uploader("📥 Konfigurations-Datei (.json) hochladen", type=["json"])
+    master_pw = st.text_input("🔑 Master-Passwort eingeben", type="password")
     
-    auth_code = st.text_input("5. Kopiere den Code aus der Adresszeile hier hinein")
-    
-    if st.button("Aktivieren & Lokal Speichern"):
-        url = "https://www.strava.com/oauth/token"
-        payload = {"client_id": input_client_id, "client_secret": input_client_secret, "code": auth_code, "grant_type": "authorization_code"}
-        res = requests.post(url, data=payload)
-        
-        if res.status_code == 200:
-            res_data = res.json()
-            neues_paket = {
-                "gemini_key": input_gemini,
-                "client_id": input_client_id,
-                "client_secret": input_client_secret,
-                "access_token": res_data["access_token"],
-                "refresh_token": res_data["refresh_token"],
-                "expires_at": res_data["expires_at"]
-            }
-            cookie_manager.set("auth_paket", json.dumps(neues_paket))
-            st.success("Erfolgreich! Bitte lade die Seite jetzt einmal komplett neu (F5).")
+    if st.button("🔐 Entsperren & Einrichten"):
+        if config_file and master_pw:
+            try:
+                content = json.load(config_file)
+                if content.get("master_pw") == master_pw:
+                    cookie_manager.set("auth_paket", json.dumps(content))
+                    st.success("Erfolgreich entsperrt! Bitte lade die Seite neu (F5).")
+                    st.rerun()
+                else:
+                    st.error("Das eingegebene Passwort ist falsch.")
+            except Exception as e:
+                st.error(f"Datei fehlerhaft oder unvollständig: {e}")
         else:
-            st.error("Strava-Verbindung fehlgeschlagen. Bitte neuen Code generieren!")
+            st.warning("Bitte lade deine .json-Datei hoch und gib dein Passwort ein.")
 
 # --- HAUPT-APP ---
 else:
@@ -244,6 +233,50 @@ else:
                 file_name=f"trainingsplan_{datetime.now().strftime('%Y%m%d')}.txt",
                 mime="text/plain"
             )
+
+    # --- SCHNELL-CHECK: TAGES- & WOCHENPLAN ---
+    if st.session_state.get("daten_geladen", False):
+        st.divider()
+        st.subheader("🗓️ Coach Schnell-Check")
+        col1, col2 = st.columns(2)
+        
+        client = genai.Client(api_key=gemini_key)
+        heute = datetime.now().strftime('%Y-%m-%d')
+        
+        if col1.button("🚀 Training heute"):
+            with st.spinner("Erstelle Tagesplan..."):
+                prompt_heute = f"""Gib mir nur für HEUTE ein konkretes Training. 
+                Instruktionen: {trainer_instructions}
+                Daten: {st.session_state.strava_context}
+                Physiologie: VO2max:{vo2max}, Laktat:{laktatschwelle}, Belastung:{belastung}
+                Regel: Max. 3 Sätze, keine Begrüßung, nur das Wesentliche (Dauer, Intensität, Pace)."""
+                try:
+                    antwort = client.models.generate_content(model='gemini-2.5-flash', contents=prompt_heute)
+                    st.session_state.heute_plan = antwort.text
+                except Exception as e:
+                    st.error(f"Fehler: {e}")
+
+        if col2.button("📅 Wochenplan erstellen"):
+            with st.spinner("Erstelle Wochenplan..."):
+                prompt_woche = f"""Erstelle einen kompakten Trainingsplan für die nächsten 7 Tage.
+                Instruktionen: {trainer_instructions}
+                Daten: {st.session_state.strava_context}
+                Physiologie: VO2max:{vo2max}, Laktat:{laktatschwelle}, Belastung:{belastung}
+                Format: Kurze Liste (Tag: Training). Fokus auf Effizienz, keine Begrüßung."""
+                try:
+                    antwort = client.models.generate_content(model='gemini-2.5-flash', contents=prompt_woche)
+                    st.session_state.woche_plan = antwort.text
+                except Exception as e:
+                    st.error(f"Fehler: {e}")
+
+        # Ergebnisse in Expander-Elementen anzeigen
+        if "heute_plan" in st.session_state:
+            with st.expander("🏃‍♂️ Dein Training für heute", expanded=True):
+                st.write(st.session_state.heute_plan)
+                
+        if "woche_plan" in st.session_state:
+            with st.expander("📅 Dein Wochenplan", expanded=True):
+                st.write(st.session_state.woche_plan)
 
     st.divider()
 
