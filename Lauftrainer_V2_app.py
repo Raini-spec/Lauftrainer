@@ -6,6 +6,7 @@ from datetime import datetime
 import PyPDF2
 import extra_streamlit_components as stx
 import json
+from PIL import Image
 
 st.set_page_config(page_title="KI Trainer", layout="centered")
 
@@ -14,7 +15,7 @@ cookie_manager = stx.CookieManager()
 st.write("") # Wichtig, damit Cookies geladen werden
 
 st.title("🏃‍♂️🚴 KI Trainer: Strava & Gemini")
-st.caption("🔒 **Version 4.8** – Vollständiger DuplicateWidgetID & Cookie-Key Fix")
+st.caption("🔒 **Version 4.9** – Screenshot-Analyse für Gesundheitsdaten integriert")
 
 # --- STATUS-VARIABLEN ---
 if "messages" not in st.session_state:
@@ -27,6 +28,8 @@ if "doc_name" not in st.session_state:
     st.session_state.doc_name = ""
 if "doc_text" not in st.session_state:
     st.session_state.doc_text = ""
+if "doc_image" not in st.session_state:
+    st.session_state.doc_image = None
 
 # --- DATEN AUS DEM "PAKET"-COOKIE LESEN ---
 auth_cookie = cookie_manager.get("auth_paket")
@@ -175,7 +178,7 @@ else:
         cookie_manager.delete("physio_paket", key="cookie_del_physio")
         
         keys_to_clear = [
-            "messages", "strava_context", "daten_geladen", "doc_name", "doc_text",
+            "messages", "strava_context", "daten_geladen", "doc_name", "doc_text", "doc_image",
             "temp_auth_data", "pending_auth", "auto_config_json", "heute_plan", "woche_plan", "trainingsplan"
         ]
         for key in keys_to_clear:
@@ -208,27 +211,33 @@ else:
             cookie_manager.set("physio_paket", json.dumps(physio_data), key="cookie_set_physio_values")
             st.success("Werte lokal gespeichert!")
 
-    with st.expander("📄 Hintergrundwissen (PDF/TXT) verwalten"):
-        st.info("💡 Dokumente müssen pro Sitzung neu geladen werden.")
+    with st.expander("📄 Hintergrundwissen (Bilder/PDF/TXT) verwalten"):
+        st.info("💡 Lade hier Screenshots (z.B. Gesundheitsdaten) oder PDFs/Texte hoch.")
         if st.session_state.doc_name:
             st.success(f"**Aktiv:** {st.session_state.doc_name}")
             if st.button("🗑️ Dokument entfernen", key="btn_remove_doc"):
                 st.session_state.doc_name = ""
                 st.session_state.doc_text = ""
+                st.session_state.doc_image = None
                 st.rerun()
         else:
-            uploaded_file = st.file_uploader("Datei hochladen", type=["txt", "md", "pdf"], key="upload_knowledge_file")
+            uploaded_file = st.file_uploader("Datei hochladen", type=["txt", "md", "pdf", "png", "jpg", "jpeg"], key="upload_knowledge_file")
             if uploaded_file:
-                text = ""
-                if uploaded_file.name.endswith(".pdf"):
+                if uploaded_file.name.lower().endswith(('.png', '.jpg', '.jpeg')):
+                    st.session_state.doc_image = Image.open(uploaded_file)
+                    st.session_state.doc_text = ""
+                elif uploaded_file.name.lower().endswith(".pdf"):
+                    text = ""
                     reader = PyPDF2.PdfReader(uploaded_file)
                     for page in reader.pages:
                         text += page.extract_text() + "\n"
+                    st.session_state.doc_text = text
+                    st.session_state.doc_image = None
                 else:
-                    text = uploaded_file.read().decode("utf-8")
+                    st.session_state.doc_text = uploaded_file.read().decode("utf-8")
+                    st.session_state.doc_image = None
                 
                 st.session_state.doc_name = uploaded_file.name
-                st.session_state.doc_text = text
                 st.success("Temporär geladen!")
                 st.rerun()
 
@@ -269,15 +278,19 @@ else:
                         prompt = f"Analysiere diesen Trainingsverlauf präzise. Heute ist der {heute}.\nHistorie:\n{aktivitaets_daten}\n"
                         
                         if trainer_instructions: prompt += f"\nAnweisungen:\n{trainer_instructions}"
-                        if st.session_state.doc_text: prompt += f"\nHintergrunddaten:\n{st.session_state.doc_text}"
+                        if st.session_state.doc_text: prompt += f"\nHintergrunddaten (Text):\n{st.session_state.doc_text}"
                         if vo2max or laktatschwelle or belastung:
                             prompt += "\nPhysiologische Kennwerte:\n"
                             if vo2max: prompt += f"- VO2max: {vo2max}\n"
                             if laktatschwelle: prompt += f"- Laktatschwelle: {laktatschwelle}\n"
                             if belastung: prompt += f"- Aktuelle Belastung: {belastung}\n"
                             
+                        request_contents = [prompt]
+                        if st.session_state.get("doc_image"):
+                            request_contents.append(st.session_state.doc_image)
+                            
                         try:
-                            antwort = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+                            antwort = client.models.generate_content(model='gemini-2.5-flash', contents=request_contents)
                             st.session_state.messages.append({"role": "assistant", "content": antwort.text})
                             st.session_state.trainingsplan = antwort.text
                         except Exception as e:
@@ -325,9 +338,15 @@ else:
                 Instruktionen: {trainer_instructions}
                 Daten: {st.session_state.strava_context}
                 Physiologie: VO2max:{vo2max}, Laktat:{laktatschwelle}, Belastung:{belastung}
-                Regel: Max. 3 Sätze, keine Begrüßung, nur das Wesentliche (Dauer, Intensität, Pace)."""
+                Regel: Max. 3 Sätze, keine Begrüßung, nur das Wesentliche (Dauer, Intensität, Pace).
+                Wenn ein Bild angehängt ist, nutze die Gesundheitsdaten darin für deine Bewertung."""
+                
+                request_contents = [prompt_heute]
+                if st.session_state.get("doc_image"):
+                    request_contents.append(st.session_state.doc_image)
+                    
                 try:
-                    antwort = client.models.generate_content(model='gemini-2.5-flash', contents=prompt_heute)
+                    antwort = client.models.generate_content(model='gemini-2.5-flash', contents=request_contents)
                     st.session_state.heute_plan = antwort.text
                 except Exception as e:
                     st.error(f"Fehler: {e}")
@@ -338,9 +357,15 @@ else:
                 Instruktionen: {trainer_instructions}
                 Daten: {st.session_state.strava_context}
                 Physiologie: VO2max:{vo2max}, Laktat:{laktatschwelle}, Belastung:{belastung}
-                Format: Kurze Liste (Tag: Training). Fokus auf Effizienz, keine Begrüßung."""
+                Format: Kurze Liste (Tag: Training). Fokus auf Effizienz, keine Begrüßung.
+                Wenn ein Bild angehängt ist, nutze die Gesundheitsdaten darin für deine Planung."""
+                
+                request_contents = [prompt_woche]
+                if st.session_state.get("doc_image"):
+                    request_contents.append(st.session_state.doc_image)
+                    
                 try:
-                    antwort = client.models.generate_content(model='gemini-2.5-flash', contents=prompt_woche)
+                    antwort = client.models.generate_content(model='gemini-2.5-flash', contents=request_contents)
                     st.session_state.woche_plan = antwort.text
                 except Exception as e:
                     st.error(f"Fehler: {e}")
@@ -383,10 +408,16 @@ else:
                     
                     Bisheriger Chat:
                     {history}
+                    
+                    Wenn dem System ein Bild beigefügt wurde, nutze diese visuellen Daten, um deine Antwort präziser zu formulieren.
                     """
                     
+                    request_contents = [sys_prompt]
+                    if st.session_state.get("doc_image"):
+                        request_contents.append(st.session_state.doc_image)
+                        
                     try:
-                        antwort = client.models.generate_content(model='gemini-2.5-flash', contents=sys_prompt)
+                        antwort = client.models.generate_content(model='gemini-2.5-flash', contents=request_contents)
                         st.markdown(antwort.text)
                         st.session_state.messages.append({"role": "assistant", "content": antwort.text})
                     except Exception as e:
