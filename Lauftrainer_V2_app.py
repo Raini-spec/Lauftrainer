@@ -14,7 +14,7 @@ cookie_manager = stx.CookieManager()
 st.write("") # Wichtig, damit Cookies geladen werden
 
 st.title("🏃‍♂️🚴 KI Trainer: Strava & Gemini")
-st.caption("🔒 **Version 4.7** – Absolut stabil gegen DuplicateWidgetID-Fehler")
+st.caption("🔒 **Version 4.8** – Absolut stabil gegen DuplicateWidgetID-Fehler")
 
 # --- STATUS-VARIABLEN ---
 if "messages" not in st.session_state:
