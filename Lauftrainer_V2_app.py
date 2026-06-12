@@ -7,6 +7,7 @@ import PyPDF2
 import extra_streamlit_components as stx
 import json
 from PIL import Image
+import os
 
 st.set_page_config(page_title="KI Trainer", layout="centered")
 
@@ -15,7 +16,7 @@ cookie_manager = stx.CookieManager()
 st.write("") 
 
 st.title("🏃‍♂️🚴 KI Trainer: Strava & Gemini")
-st.caption("🔒 **Version 4.14** – Plan direkt im Ausklappmenü & API-Bugfix")
+st.caption("🔒 **Version 4.15** – Zuverlässiges Plan-Gedächtnis (Server-Speicherung)")
 
 # --- STATUS-VARIABLEN ---
 if "messages" not in st.session_state:
@@ -25,7 +26,6 @@ if "strava_context" not in st.session_state:
 if "daten_geladen" not in st.session_state:
     st.session_state.daten_geladen = False
 
-# Listen für mehrere Dokumente/Bilder
 if "doc_names" not in st.session_state:
     st.session_state.doc_names = []
 if "doc_texts" not in st.session_state:
@@ -55,10 +55,14 @@ if physio_cookie:
     except:
         pass
 
-# --- PLAN AUS COOKIE LADEN ---
-saved_plan = physio_data.get("current_plan", "")
-if "trainingsplan" not in st.session_state and saved_plan:
-    st.session_state.trainingsplan = saved_plan
+# --- PLAN LOKAL VOM SERVER LADEN (NEU) ---
+if "trainingsplan" not in st.session_state:
+    if os.path.exists("mein_plan.txt"):
+        try:
+            with open("mein_plan.txt", "r", encoding="utf-8") as f:
+                st.session_state.trainingsplan = f.read()
+        except Exception:
+            pass
 
 gemini_key = auth_data.get("gemini_key")
 client_id = auth_data.get("client_id")
@@ -149,7 +153,6 @@ if not gemini_key or not access_token:
 
 # --- HAUPT-APP ---
 else:
-    # API Client initialisieren (Bugfix für 'client is not defined')
     client = genai.Client(api_key=gemini_key)
 
     if "temp_auth_data" in st.session_state:
@@ -158,6 +161,11 @@ else:
     if st.sidebar.button("⚠️ Lokale Daten löschen", key="btn_clear_device_data"):
         cookie_manager.delete("auth_paket", key="cookie_del_auth")
         cookie_manager.delete("physio_paket", key="cookie_del_physio")
+        
+        # Plan-Datei vom Server löschen
+        if os.path.exists("mein_plan.txt"):
+            os.remove("mein_plan.txt")
+            
         for key in ["messages", "strava_context", "daten_geladen", "doc_names", "doc_texts", "doc_images", "temp_auth_data", "pending_auth", "auto_config_json", "heute_plan", "woche_plan", "trainingsplan", "upload_knowledge_files"]:
             if key in st.session_state: del st.session_state[key]
         time.sleep(0.5)
@@ -195,7 +203,6 @@ else:
                 else: st.session_state.doc_texts.append(f.read().decode("utf-8"))
             st.success(f"Geladen: {len(st.session_state.doc_names)} Dateien.")
 
-    # --- NEUES AUSKLAPPMENÜ FÜR DEN PLAN ---
     with st.expander("📅 Aktueller Trainingsplan", expanded=bool(st.session_state.get("trainingsplan"))):
         if st.session_state.get("trainingsplan"):
             st.markdown(st.session_state.trainingsplan)
@@ -241,8 +248,11 @@ else:
                 try:
                     resp = client.models.generate_content(model='gemini-2.5-flash', contents=req)
                     st.session_state.trainingsplan = resp.text
-                    physio_data["current_plan"] = resp.text
-                    cookie_manager.set("physio_paket", json.dumps(physio_data), key="cookie_set_newplan")
+                    
+                    # Plan direkt auf dem Server speichern (umgeht Cookie-Limit)
+                    with open("mein_plan.txt", "w", encoding="utf-8") as f:
+                        f.write(resp.text)
+                        
                     st.rerun()
                 except Exception as e: st.error(f"Fehler: {e}")
         
@@ -254,8 +264,11 @@ else:
                     try:
                         resp = client.models.generate_content(model='gemini-2.5-flash', contents=req)
                         st.session_state.trainingsplan = resp.text
-                        physio_data["current_plan"] = resp.text
-                        cookie_manager.set("physio_paket", json.dumps(physio_data), key="cookie_set_updateplan")
+                        
+                        # Plan aktualisiert auf dem Server speichern
+                        with open("mein_plan.txt", "w", encoding="utf-8") as f:
+                            f.write(resp.text)
+                            
                         st.rerun()
                     except Exception as e: st.error(f"Fehler: {e}")
 
