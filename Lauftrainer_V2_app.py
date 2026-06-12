@@ -14,7 +14,7 @@ cookie_manager = stx.CookieManager()
 st.write("") # Wichtig, damit Cookies geladen werden
 
 st.title("🏃‍♂️🚴 KI Trainer: Strava & Gemini")
-st.caption("🔒 **Version 4.3** – Komfort-Login & Auto-Konfigurations-Generator")
+st.caption("🔒 **Version 4.4** – Asynchroner Cookie-Fix für stabilen Login")
 
 # --- STATUS-VARIABLEN ---
 if "messages" not in st.session_state:
@@ -34,8 +34,15 @@ auth_data = {}
 if auth_cookie:
     try:
         auth_data = json.loads(auth_cookie) if isinstance(auth_cookie, str) else auth_cookie
+        # Sobald der echte Cookie da ist, bereinigen wir das temporäre Backup
+        if "temp_auth_data" in st.session_state:
+            del st.session_state.temp_auth_data
     except:
         pass
+
+# Überbrückung: Falls der Cookie-Schreibvorgang im Browser noch läuft
+if "temp_auth_data" in st.session_state:
+    auth_data = st.session_state.temp_auth_data
 
 physio_cookie = cookie_manager.get("physio_paket")
 physio_data = {}
@@ -98,9 +105,9 @@ if not gemini_key or not access_token:
                 try:
                     content = json.load(config_file)
                     if content.get("master_pw") == master_pw:
-                        cookie_manager.set("auth_paket", json.dumps(content))
-                        st.success("Erfolgreich! Lade App...")
-                        time.sleep(1.5)
+                        # Brücke bauen: Daten im State parken und sofort neu laden
+                        st.session_state.temp_auth_data = content
+                        st.success("Erfolgreich entsperrt! Die App lädt...")
                         st.rerun()
                     else:
                         st.error("Das eingegebene Passwort ist falsch.")
@@ -130,7 +137,7 @@ if not gemini_key or not access_token:
                     "refresh_token": in_refresh,
                     "expires_at": 0
                 }
-                cookie_manager.set("auth_paket", json.dumps(neues_paket))
+                st.session_state.pending_auth = neues_paket
                 st.session_state["auto_config_json"] = json.dumps(neues_paket, indent=2)
                 st.success("App konfiguriert! Lade jetzt unten deine Datei herunter.")
             else:
@@ -144,10 +151,16 @@ if not gemini_key or not access_token:
                 mime="application/json"
             )
             if st.button("🔄 App starten"):
+                if "pending_auth" in st.session_state:
+                    st.session_state.temp_auth_data = st.session_state.pending_auth
                 st.rerun()
 
 # --- HAUPT-APP ---
 else:
+    # Hier schreiben wir den Cookie sicher im produktiven Render-Lauf in den Browser
+    if "temp_auth_data" in st.session_state:
+        cookie_manager.set("auth_paket", json.dumps(st.session_state.temp_auth_data))
+
     if st.sidebar.button("⚠️ Lokale Daten von diesem Gerät löschen"):
         cookie_manager.delete("auth_paket")
         cookie_manager.delete("physio_paket")
@@ -262,7 +275,7 @@ else:
         
         with col_md:
             st.download_button(
-                label="📥 Als Markdown (.md) speichern",
+                label="📥 Als Markdown (.md)保存",
                 data=plan_text,
                 file_name=f"trainingsplan_{datetime.now().strftime('%Y%m%d')}.md",
                 mime="text/markdown"
@@ -293,7 +306,7 @@ else:
                 Physiologie: VO2max:{vo2max}, Laktat:{laktatschwelle}, Belastung:{belastung}
                 Regel: Max. 3 Sätze, keine Begrüßung, nur das Wesentliche (Dauer, Intensität, Pace)."""
                 try:
-                    antwort = client.models.generate_content(model='gemini-2.5-flash', contents=prompt_heute)
+                    antwort = client.models.generate_content(model='gemini-2.5-flash', contents=prompt_heude)
                     st.session_state.heute_plan = antwort.text
                 except Exception as e:
                     st.error(f"Fehler: {e}")
