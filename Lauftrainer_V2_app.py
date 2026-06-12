@@ -12,10 +12,10 @@ st.set_page_config(page_title="KI Trainer", layout="centered")
 
 # --- COOKIE MANAGER ---
 cookie_manager = stx.CookieManager()
-st.write("") # Wichtig, damit Cookies geladen werden
+st.write("") 
 
 st.title("🏃‍♂️🚴 KI Trainer: Strava & Gemini")
-st.caption("🔒 **Version 4.12** – Intelligentes Plan-Gedächtnis & Update-Funktion")
+st.caption("🔒 **Version 4.13** – Intelligentes Plan-Gedächtnis + Coach Schnell-Check")
 
 # --- STATUS-VARIABLEN ---
 if "messages" not in st.session_state:
@@ -97,82 +97,54 @@ def get_valid_strava_token():
                 return None
     return access_token
 
-# --- FLEXIBLER LOGIN-BEREICH ---
+# --- LOGIN-BEREICH ---
 if not gemini_key or not access_token:
     st.info("👋 Willkommen! Wähle eine Methode, um deine App zu starten.")
-    
-    tab1, tab2 = st.tabs(["📁 Schneller Login (Datei + Passwort)", "⌨️ Erstmalige / Manuelle Einrichtung"])
-    
+    tab1, tab2 = st.tabs(["📁 Schneller Login (Datei + Passwort)", "⌨️ Manuelle Einrichtung"])
     with tab1:
-        st.write("Nutze deine bereits erstellte Konfigurationsdatei für den schnellen Start.")
         config_file = st.file_uploader("📥 Konfigurations-Datei (.json) hochladen", type=["json"], key="upload_tab1")
         master_pw = st.text_input("🔑 Master-Passwort eingeben", type="password", key="pw_tab1")
-        
         if st.button("🔐 Entsperren & Einrichten", key="btn_tab1"):
             if config_file and master_pw:
                 try:
                     content = json.load(config_file)
                     if content.get("master_pw") == master_pw:
                         st.session_state.temp_auth_data = content
-                        st.success("Erfolgreich entsperrt! Die App lädt...")
                         st.rerun()
                     else:
                         st.error("Das eingegebene Passwort ist falsch.")
                 except Exception as e:
                     st.error(f"Datei fehlerhaft: {e}")
-            else:
-                st.warning("Bitte lade eine Datei hoch und gib dein Passwort ein.")
-                
     with tab2:
-        st.write("Erstelle hier deine Konfiguration inkl. der richtigen Strava-Rechte.")
-        
         in_pw = st.text_input("🔑 Wähle dein Master-Passwort", type="password", key="setup_pw")
         in_gemini = st.text_input("1. Gemini API Key", type="password", key="setup_gemini")
         in_client_id = st.text_input("2. Strava Client-ID", key="setup_id")
         in_client_secret = st.text_input("3. Geheimer Clientschlüssel", type="password", key="setup_secret")
-        
         if in_client_id:
             auth_url = f"https://www.strava.com/oauth/authorize?client_id={in_client_id}&response_type=code&redirect_uri=http://localhost/exchange_token&approval_prompt=force&scope=activity:read_all"
             st.markdown(f"[👉 Klicke hier, um Strava freizugeben (WICHTIG!)]({auth_url})")
-            
         in_code = st.text_input("4. Kopiere den Code aus der Adresszeile hier hinein", key="setup_code")
-        
-        if st.button("🚀 App aktivieren & Datei erstellen", key="btn_setup"):
+        if st.button("🚀 App aktivieren", key="btn_setup"):
             if in_pw and in_gemini and in_client_id and in_client_secret and in_code:
                 url = "https://www.strava.com/oauth/token"
                 payload = {"client_id": in_client_id, "client_secret": in_client_secret, "code": in_code, "grant_type": "authorization_code"}
                 res = requests.post(url, data=payload)
-                
                 if res.status_code == 200:
                     res_data = res.json()
                     neues_paket = {
-                        "master_pw": in_pw,
-                        "gemini_key": in_gemini,
-                        "client_id": in_client_id,
-                        "client_secret": in_client_secret,
-                        "access_token": res_data["access_token"],
-                        "refresh_token": res_data["refresh_token"],
-                        "expires_at": res_data["expires_at"]
+                        "master_pw": in_pw, "gemini_key": in_gemini, "client_id": in_client_id, 
+                        "client_secret": in_client_secret, "access_token": res_data["access_token"], 
+                        "refresh_token": res_data["refresh_token"], "expires_at": res_data["expires_at"]
                     }
                     st.session_state.pending_auth = neues_paket
                     st.session_state["auto_config_json"] = json.dumps(neues_paket, indent=2)
-                    st.success("App konfiguriert! Lade jetzt unten deine Datei herunter.")
-                else:
-                    st.error("Fehler beim Strava-Code. Bitte generiere den Link über den Button noch einmal neu!")
+                    st.success("App konfiguriert!")
             else:
                 st.error("Bitte fülle alle Felder aus!")
-                
         if "auto_config_json" in st.session_state:
-            st.download_button(
-                label="📥 JETZT DEINE CONFIG.JSON HERUNTERLADEN",
-                data=st.session_state["auto_config_json"],
-                file_name="config.json",
-                mime="application/json",
-                key="btn_download_config_auto"
-            )
+            st.download_button("📥 JETZT DEINE CONFIG.JSON HERUNTERLADEN", data=st.session_state["auto_config_json"], file_name="config.json", mime="application/json", key="btn_down_auto")
             if st.button("🔄 App starten", key="btn_start_after_setup"):
-                if "pending_auth" in st.session_state:
-                    st.session_state.temp_auth_data = st.session_state.pending_auth
+                if "pending_auth" in st.session_state: st.session_state.temp_auth_data = st.session_state.pending_auth
                 st.rerun()
 
 # --- HAUPT-APP ---
@@ -180,215 +152,128 @@ else:
     if "temp_auth_data" in st.session_state:
         cookie_manager.set("auth_paket", json.dumps(st.session_state.temp_auth_data), key="cookie_set_main_auth")
 
-    if st.sidebar.button("⚠️ Lokale Daten von diesem Gerät löschen", key="btn_clear_device_data"):
+    if st.sidebar.button("⚠️ Lokale Daten löschen", key="btn_clear_device_data"):
         cookie_manager.delete("auth_paket", key="cookie_del_auth")
         cookie_manager.delete("physio_paket", key="cookie_del_physio")
-        
-        keys_to_clear = [
-            "messages", "strava_context", "daten_geladen", "doc_names", "doc_texts", "doc_images",
-            "temp_auth_data", "pending_auth", "auto_config_json", "heute_plan", "woche_plan", "trainingsplan",
-            "upload_knowledge_files"
-        ]
-        for key in keys_to_clear:
-            if key in st.session_state:
-                del st.session_state[key]
-                
+        for key in ["messages", "strava_context", "daten_geladen", "doc_names", "doc_texts", "doc_images", "temp_auth_data", "pending_auth", "auto_config_json", "heute_plan", "woche_plan", "trainingsplan", "upload_knowledge_files"]:
+            if key in st.session_state: del st.session_state[key]
         time.sleep(0.5)
         st.rerun()
 
-    with st.expander("🧠 Trainer-Instruktionen bearbeiten"):
+    with st.expander("🧠 Trainer-Instruktionen"):
         new_instructions = st.text_area("Anweisungen", value=trainer_instructions, height=150, key="input_instructions")
-        if st.button("💾 Instruktionen Lokal Speichern", key="btn_save_instructions"):
+        if st.button("💾 Speichern", key="btn_save_instructions"):
             physio_data["instructions"] = new_instructions
             cookie_manager.set("physio_paket", json.dumps(physio_data), key="cookie_set_instructions")
             st.success("Gespeichert!")
 
     with st.expander("📊 Physiologische Werte"):
         col_v, col_l, col_b = st.columns(3)
-        with col_v:
-            new_vo2max = st.text_input("VO2max", value=vo2max, key="input_vo2max")
-        with col_l:
-            new_laktat = st.text_input("Laktatschwelle", value=laktatschwelle, key="input_laktat")
-        with col_b:
-            new_belastung = st.text_input("Aktuelle Belastung", value=belastung, key="input_belastung")
-            
+        with col_v: new_vo2max = st.text_input("VO2max", value=vo2max, key="input_vo2max")
+        with col_l: new_laktat = st.text_input("Laktatschwelle", value=laktatschwelle, key="input_laktat")
+        with col_b: new_belastung = st.text_input("Aktuelle Belastung", value=belastung, key="input_belastung")
         if st.button("💾 Werte speichern", key="btn_save_physio"):
-            physio_data["vo2max"] = new_vo2max
-            physio_data["laktat"] = new_laktat
-            physio_data["belastung"] = new_belastung
+            physio_data.update({"vo2max": new_vo2max, "laktat": new_laktat, "belastung": new_belastung})
             cookie_manager.set("physio_paket", json.dumps(physio_data), key="cookie_set_physio_values")
-            st.success("Werte lokal gespeichert!")
+            st.success("Gespeichert!")
 
-    with st.expander("📄 Hintergrundwissen (Bilder/PDF/TXT) verwalten"):
-        st.info("💡 Lade hier bis zu 5 Dateien einzeln oder zusammen hoch. Das Feld bleibt nun dauerhaft sichtbar.")
-        
+    with st.expander("📄 Hintergrundwissen (Dateien) verwalten"):
         uploaded_files = st.file_uploader("Dateien hochladen", type=["txt", "md", "pdf", "png", "jpg", "jpeg"], accept_multiple_files=True, key="upload_knowledge_files")
-        
-        st.session_state.doc_names = []
-        st.session_state.doc_texts = []
-        st.session_state.doc_images = []
-        
+        st.session_state.doc_names, st.session_state.doc_texts, st.session_state.doc_images = [], [], []
         if uploaded_files:
             for f in uploaded_files[:5]:
                 st.session_state.doc_names.append(f.name)
-                if f.name.lower().endswith(('.png', '.jpg', '.jpeg')):
-                    st.session_state.doc_images.append(Image.open(f))
+                if f.name.lower().endswith(('.png', '.jpg', '.jpeg')): st.session_state.doc_images.append(Image.open(f))
                 elif f.name.lower().endswith(".pdf"):
                     text = ""
                     reader = PyPDF2.PdfReader(f)
-                    for page in reader.pages:
-                        text += page.extract_text() + "\n"
+                    for page in reader.pages: text += page.extract_text() + "\n"
                     st.session_state.doc_texts.append(text)
-                else:
-                    st.session_state.doc_texts.append(f.read().decode("utf-8"))
-            
-            st.success(f"**Aktiv ({len(st.session_state.doc_names)} Datei/en):** {', '.join(st.session_state.doc_names)}")
-            if len(uploaded_files) > 5:
-                st.warning("⚠️ Es wurden mehr als 5 Dateien ausgewählt. Nur die ersten 5 werden berücksichtigt.")
+                else: st.session_state.doc_texts.append(f.read().decode("utf-8"))
+            st.success(f"Geladen: {len(st.session_state.doc_names)} Dateien.")
 
     st.divider()
-    st.subheader("🎯 1. Strava-Daten abrufen")
-    anzahl_aktivitaeten = st.slider("Historie (Anzahl Aktivitäten)", 5, 50, 30, key="slider_history")
-
-    if st.button("⬇️ Neueste Strava-Daten laden", key="btn_load_strava"):
+    st.subheader("🎯 1. Daten abrufen")
+    if st.button("⬇️ Strava-Daten laden", key="btn_load_strava"):
         strava_token = get_valid_strava_token()
         if strava_token:
-            with st.spinner("Lade Daten von Strava..."):
-                response = requests.get(f"https://www.strava.com/api/v3/athlete/activities?per_page={anzahl_aktivitaeten}", headers={"Authorization": f"Bearer {strava_token}"})
-                
-                if response.status_code == 200:
-                    activities = response.json()
-                    aktivitaets_daten = ""
-                    for act in activities:
-                        typ = act.get('sport_type', act.get('type', 'Unbekannt'))
-                        dist_km = act.get('distance', 0) / 1000
-                        speed = act.get('average_speed', 0)
-                        start = act.get('start_date_local', '')[:10]
-                        puls = act.get('average_heartrate', 'Kein Puls')
-                        
-                        if typ in ["Run", "Hike", "Lauf", "Wanderung"]:
-                            pace = (1000 / speed) / 60 if speed > 0 else 0
-                            info = f"Pace: {pace:.2f} min/km"
-                        else:
-                            info = f"Geschw.: {speed * 3.6:.2f} km/h"
-                            
-                        aktivitaets_daten += f"- [{start}] [{typ}] {act.get('name')}: {dist_km:.2f} km | {info} | Ø Puls: {puls}\n"
-                    
-                    st.session_state.strava_context = aktivitaets_daten
-                    st.session_state.daten_geladen = True
-                    st.success("Daten erfolgreich geladen! Wähle nun eine Option für deinen Trainingsplan.")
-                else:
-                    st.error("Fehler bei Strava-Abfrage.")
+            res = requests.get(f"https://www.strava.com/api/v3/athlete/activities?per_page=30", headers={"Authorization": f"Bearer {strava_token}"})
+            if res.status_code == 200:
+                activities = res.json()
+                data = ""
+                for act in activities:
+                    t = act.get('sport_type', act.get('type', 'Unbekannt'))
+                    d = act.get('distance', 0) / 1000
+                    s = act.get('average_speed', 0)
+                    date = act.get('start_date_local', '')[:10]
+                    p = act.get('average_heartrate', 'Kein Puls')
+                    info = f"Pace: {(1000/s)/60:.2f} min/km" if t in ["Run", "Lauf"] and s > 0 else f"Geschw.: {s*3.6:.2f} km/h"
+                    data += f"- [{date}] [{t}] {act.get('name')}: {d:.2f} km | {info} | Ø Puls: {p}\n"
+                st.session_state.strava_context = data
+                st.session_state.daten_geladen = True
+                st.success("Daten geladen!")
+            else: st.error("Fehler bei Strava.")
 
     if st.session_state.get("daten_geladen"):
         st.subheader("🗓️ 2. Trainingsplan steuern")
-        col_neu, col_update = st.columns(2)
+        col1, col2 = st.columns(2)
+        if col1.button("✨ Neuen Plan erstellen", key="btn_new_plan"):
+            with st.spinner("Erstelle neuen Plan..."):
+                prompt = f"Erstelle einen neuen Trainingsplan.\nHistorie:\n{st.session_state.strava_context}\nInstruktionen: {trainer_instructions}\n"
+                req = [prompt] + st.session_state.doc_images
+                try:
+                    resp = client.models.generate_content(model='gemini-2.5-flash', contents=req)
+                    st.session_state.trainingsplan = resp.text
+                    physio_data["current_plan"] = resp.text
+                    cookie_manager.set("physio_paket", json.dumps(physio_data), key="cookie_set_newplan")
+                    st.rerun()
+                except Exception as e: st.error(f"Fehler: {e}")
         
-        client = genai.Client(api_key=gemini_key)
-        heute = datetime.now().strftime('%Y-%m-%d')
-        
-        with col_neu:
-            if st.button("✨ Komplett neuen Plan erstellen", key="btn_new_plan"):
-                with st.spinner("KI analysiert von Null und erstellt neuen Plan..."):
-                    prompt = f"Erstelle einen neuen Trainingsplan. Heute ist der {heute}.\nHistorie:\n{st.session_state.strava_context}\n"
-                    if trainer_instructions: prompt += f"\nAnweisungen:\n{trainer_instructions}"
-                    if st.session_state.doc_texts: prompt += f"\nHintergrunddaten:\n" + "\n".join(st.session_state.doc_texts)
-                    if vo2max or laktatschwelle or belastung:
-                        prompt += f"\nPhysiologie: VO2max:{vo2max}, Laktat:{laktatschwelle}, Belastung:{belastung}\n"
-                    
-                    req = [prompt]
-                    if st.session_state.doc_images: req.extend(st.session_state.doc_images)
-                        
+        if st.session_state.get("trainingsplan"):
+            if col2.button("🔄 Plan aktualisieren", key="btn_update_plan"):
+                with st.spinner("Passe Plan an..."):
+                    prompt = f"Hier ist mein alter Plan:\n{st.session_state.trainingsplan}\n\nHier sind neue Trainingsdaten:\n{st.session_state.strava_context}\n\nAktualisiere den Plan intelligent."
+                    req = [prompt] + st.session_state.doc_images
                     try:
-                        antwort = client.models.generate_content(model='gemini-2.5-flash', contents=req)
-                        st.session_state.trainingsplan = antwort.text
-                        physio_data["current_plan"] = antwort.text
-                        cookie_manager.set("physio_paket", json.dumps(physio_data), key="cookie_set_newplan")
+                        resp = client.models.generate_content(model='gemini-2.5-flash', contents=req)
+                        st.session_state.trainingsplan = resp.text
+                        physio_data["current_plan"] = resp.text
+                        cookie_manager.set("physio_paket", json.dumps(physio_data), key="cookie_set_updateplan")
                         st.rerun()
-                    except Exception as e:
-                        st.error(f"Fehler: {e}")
+                    except Exception as e: st.error(f"Fehler: {e}")
 
-        with col_update:
-            if st.session_state.get("trainingsplan"):
-                if st.button("🔄 Aktuellen Plan intelligent anpassen", key="btn_update_plan"):
-                    with st.spinner("KI vergleicht alte Struktur mit neuen Daten..."):
-                        prompt = f"""Du bist ein Ausdauer-Coach. Heute ist der {heute}.
-                        Passe den folgenden BESTEHENDEN Trainingsplan an die neuesten Trainingsdaten an.
-                        Regel: Behalte die Struktur des alten Plans weitestgehend bei. Passe nur Einheiten an, falls ich abgewichen bin oder die neuesten Daten (z.B. Erschöpfung) eine Änderung erfordern.
-                        
-                        BESTEHENDER PLAN:
-                        {st.session_state.trainingsplan}
-                        
-                        NEUESTE DATEN:
-                        {st.session_state.strava_context}
-                        """
-                        if trainer_instructions: prompt += f"\nAnweisungen:\n{trainer_instructions}"
-                        if st.session_state.doc_texts: prompt += f"\nHintergrunddaten:\n" + "\n".join(st.session_state.doc_texts)
-                        if vo2max or laktatschwelle or belastung:
-                            prompt += f"\nPhysiologie: VO2max:{vo2max}, Laktat:{laktatschwelle}, Belastung:{belastung}\n"
-                        
-                        req = [prompt]
-                        if st.session_state.doc_images: req.extend(st.session_state.doc_images)
-                            
-                        try:
-                            antwort = client.models.generate_content(model='gemini-2.5-flash', contents=req)
-                            st.session_state.trainingsplan = antwort.text
-                            physio_data["current_plan"] = antwort.text
-                            cookie_manager.set("physio_paket", json.dumps(physio_data), key="cookie_set_updateplan")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Fehler: {e}")
-
-    # --- PLAN ANZEIGEN & EXPORTIEREN ---
+    # --- PLAN ANZEIGEN & SCHNELL-CHECK ---
     if st.session_state.get("trainingsplan"):
         st.divider()
-        st.subheader("📋 Dein aktueller Trainingsplan")
+        st.subheader("📋 Dein Plan")
         st.write(st.session_state.trainingsplan)
         
-        col_md, col_txt = st.columns(2)
-        with col_md:
-            st.download_button("📥 Als Markdown (.md) speichern", data=st.session_state.trainingsplan, file_name="trainingsplan.md", mime="text/markdown", key="dl_md")
-        with col_txt:
-            st.download_button("📥 Als Textdatei (.txt) speichern", data=st.session_state.trainingsplan, file_name="trainingsplan.txt", mime="text/plain", key="dl_txt")
+        st.subheader("⚡ Coach Schnell-Check")
+        c1, c2 = st.columns(2)
+        if c1.button("🚀 Training heute", key="btn_check_today"):
+            with st.spinner("Analysiere heute..."):
+                req = [f"Gib mir nur für HEUTE ein Training basierend auf:\n{st.session_state.trainingsplan}\nDaten:\n{st.session_state.strava_context}"] + st.session_state.doc_images
+                resp = client.models.generate_content(model='gemini-2.5-flash', contents=req)
+                st.write(resp.text)
+        if c2.button("📅 Wochenplan Zusammenfassung", key="btn_check_week"):
+            with st.spinner("Analysiere Woche..."):
+                req = [f"Gib mir eine kompakte Zusammenfassung des Trainings für die nächsten 7 Tage basierend auf:\n{st.session_state.trainingsplan}"] + st.session_state.doc_images
+                resp = client.models.generate_content(model='gemini-2.5-flash', contents=req)
+                st.write(resp.text)
 
     st.divider()
-
-    st.subheader("💬 Chat mit deinem Coach")
+    st.subheader("💬 Chat mit Coach")
     for msg in st.session_state.messages:
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
+        with st.chat_message(msg["role"]): st.markdown(msg["content"])
 
-    if user_input := st.chat_input("Tippe deine Nachricht an den Coach...", key="input_chat_box"):
+    if user_input := st.chat_input("Nachricht an den Coach...", key="input_chat"):
         st.session_state.messages.append({"role": "user", "content": user_input})
-        with st.chat_message("user"):
-            st.markdown(user_input)
-            
+        with st.chat_message("user"): st.markdown(user_input)
         with st.chat_message("assistant"):
             with st.spinner("Tippt..."):
                 client = genai.Client(api_key=gemini_key)
-                history = "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.messages])
-                heute = datetime.now().strftime('%Y-%m-%d')
-                
-                sys_prompt = f"""
-                Du bist ein Ausdauer-Coach. Heute ist der {heute}. Beantworte die Nachricht.
-                Aktueller Plan: {st.session_state.get('trainingsplan', 'Noch kein Plan.')}
-                Neueste Strava-Daten: {st.session_state.strava_context}
-                Instruktionen: {trainer_instructions}
-                VO2max: {vo2max}, Laktat: {laktatschwelle}, Belastung: {belastung}
-                """
-                
-                if st.session_state.doc_texts: 
-                    sys_prompt += "\nHintergrunddaten (Text):\n" + "\n\n".join(st.session_state.doc_texts)
-                
-                sys_prompt += f"\n\nBisheriger Chat:\n{history}\n\nBerücksichtige auch die vom User hochgeladenen Bilder."
-                
-                request_contents = [sys_prompt]
-                if st.session_state.doc_images:
-                    request_contents.extend(st.session_state.doc_images)
-                    
-                try:
-                    antwort = client.models.generate_content(model='gemini-2.5-flash', contents=request_contents)
-                    st.markdown(antwort.text)
-                    st.session_state.messages.append({"role": "assistant", "content": antwort.text})
-                except Exception as e:
-                    st.error(f"Genauer API-Fehler: {e}")
+                prompt = f"Du bist Coach. Plan:\n{st.session_state.get('trainingsplan')}\nDaten:\n{st.session_state.strava_context}\nFrage: {user_input}"
+                req = [prompt] + st.session_state.doc_images
+                resp = client.models.generate_content(model='gemini-2.5-flash', contents=req)
+                st.markdown(resp.text)
+                st.session_state.messages.append({"role": "assistant", "content": resp.text})
