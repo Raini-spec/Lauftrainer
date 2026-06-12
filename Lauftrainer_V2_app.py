@@ -14,7 +14,7 @@ cookie_manager = stx.CookieManager()
 st.write("") # Wichtig, damit Cookies geladen werden
 
 st.title("🏃‍♂️🚴 KI Trainer: Strava & Gemini")
-st.caption("🔒 **Version 4.4** – Asynchroner Cookie-Fix für stabilen Login")
+st.caption("🔒 **Version 4.6** – Fix für fehlerfreies Löschen der lokalen Daten")
 
 # --- STATUS-VARIABLEN ---
 if "messages" not in st.session_state:
@@ -34,13 +34,11 @@ auth_data = {}
 if auth_cookie:
     try:
         auth_data = json.loads(auth_cookie) if isinstance(auth_cookie, str) else auth_cookie
-        # Sobald der echte Cookie da ist, bereinigen wir das temporäre Backup
         if "temp_auth_data" in st.session_state:
             del st.session_state.temp_auth_data
     except:
         pass
 
-# Überbrückung: Falls der Cookie-Schreibvorgang im Browser noch läuft
 if "temp_auth_data" in st.session_state:
     auth_data = st.session_state.temp_auth_data
 
@@ -105,7 +103,6 @@ if not gemini_key or not access_token:
                 try:
                     content = json.load(config_file)
                     if content.get("master_pw") == master_pw:
-                        # Brücke bauen: Daten im State parken und sofort neu laden
                         st.session_state.temp_auth_data = content
                         st.success("Erfolgreich entsperrt! Die App lädt...")
                         st.rerun()
@@ -117,29 +114,41 @@ if not gemini_key or not access_token:
                 st.warning("Bitte lade eine Datei hoch und gib dein Passwort ein.")
                 
     with tab2:
-        st.write("Trage deine Schlüssel ein. Die App generiert daraus automatisch deine fertige `config.json`.")
+        st.write("Erstelle hier deine Konfiguration inkl. der richtigen Strava-Rechte.")
         
-        in_pw = st.text_input("🔑 Wähle dein Master-Passwort (für zukünftige Logins)", type="password", key="setup_pw")
+        in_pw = st.text_input("🔑 Wähle dein Master-Passwort", type="password", key="setup_pw")
         in_gemini = st.text_input("1. Gemini API Key", type="password", key="setup_gemini")
         in_client_id = st.text_input("2. Strava Client-ID", key="setup_id")
         in_client_secret = st.text_input("3. Geheimer Clientschlüssel", type="password", key="setup_secret")
-        in_access = st.text_input("4. Strava Zugriffs-Token (Access Token)", type="password", key="setup_access")
-        in_refresh = st.text_input("5. Strava Aktualisierungs-Token (Refresh Token)", type="password", key="setup_refresh")
+        
+        if in_client_id:
+            auth_url = f"https://www.strava.com/oauth/authorize?client_id={in_client_id}&response_type=code&redirect_uri=http://localhost/exchange_token&approval_prompt=force&scope=activity:read_all"
+            st.markdown(f"[👉 Klicke hier, um Strava freizugeben (WICHTIG!)]({auth_url})")
+            
+        in_code = st.text_input("4. Kopiere den Code aus der Adresszeile hier hinein", key="setup_code")
         
         if st.button("🚀 App aktivieren & Datei erstellen", key="btn_setup"):
-            if in_pw and in_gemini and in_client_id and in_client_secret and in_access and in_refresh:
-                neues_paket = {
-                    "master_pw": in_pw,
-                    "gemini_key": in_gemini,
-                    "client_id": in_client_id,
-                    "client_secret": in_client_secret,
-                    "access_token": in_access,
-                    "refresh_token": in_refresh,
-                    "expires_at": 0
-                }
-                st.session_state.pending_auth = neues_paket
-                st.session_state["auto_config_json"] = json.dumps(neues_paket, indent=2)
-                st.success("App konfiguriert! Lade jetzt unten deine Datei herunter.")
+            if in_pw and in_gemini and in_client_id and in_client_secret and in_code:
+                url = "https://www.strava.com/oauth/token"
+                payload = {"client_id": in_client_id, "client_secret": in_client_secret, "code": in_code, "grant_type": "authorization_code"}
+                res = requests.post(url, data=payload)
+                
+                if res.status_code == 200:
+                    res_data = res.json()
+                    neues_paket = {
+                        "master_pw": in_pw,
+                        "gemini_key": in_gemini,
+                        "client_id": in_client_id,
+                        "client_secret": in_client_secret,
+                        "access_token": res_data["access_token"],
+                        "refresh_token": res_data["refresh_token"],
+                        "expires_at": res_data["expires_at"]
+                    }
+                    st.session_state.pending_auth = neues_paket
+                    st.session_state["auto_config_json"] = json.dumps(neues_paket, indent=2)
+                    st.success("App konfiguriert! Lade jetzt unten deine Datei herunter.")
+                else:
+                    st.error("Fehler beim Strava-Code. Bitte generiere den Link über den Button noch einmal neu!")
             else:
                 st.error("Bitte fülle alle Felder aus!")
                 
@@ -157,13 +166,15 @@ if not gemini_key or not access_token:
 
 # --- HAUPT-APP ---
 else:
-    # Hier schreiben wir den Cookie sicher im produktiven Render-Lauf in den Browser
     if "temp_auth_data" in st.session_state:
         cookie_manager.set("auth_paket", json.dumps(st.session_state.temp_auth_data))
 
     if st.sidebar.button("⚠️ Lokale Daten von diesem Gerät löschen"):
         cookie_manager.delete("auth_paket")
         cookie_manager.delete("physio_paket")
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        time.sleep(0.5)
         st.rerun()
 
     with st.expander("🧠 Trainer-Instruktionen bearbeiten"):
@@ -275,7 +286,7 @@ else:
         
         with col_md:
             st.download_button(
-                label="📥 Als Markdown (.md)保存",
+                label="📥 Als Markdown (.md) speichern",
                 data=plan_text,
                 file_name=f"trainingsplan_{datetime.now().strftime('%Y%m%d')}.md",
                 mime="text/markdown"
@@ -306,7 +317,7 @@ else:
                 Physiologie: VO2max:{vo2max}, Laktat:{laktatschwelle}, Belastung:{belastung}
                 Regel: Max. 3 Sätze, keine Begrüßung, nur das Wesentliche (Dauer, Intensität, Pace)."""
                 try:
-                    antwort = client.models.generate_content(model='gemini-2.5-flash', contents=prompt_heude)
+                    antwort = client.models.generate_content(model='gemini-2.5-flash', contents=prompt_heute)
                     st.session_state.heute_plan = antwort.text
                 except Exception as e:
                     st.error(f"Fehler: {e}")
