@@ -16,7 +16,7 @@ cookie_manager = stx.CookieManager()
 st.write("") 
 
 st.title("🏃‍♂️🚴 KI Trainer: Strava & Gemini")
-st.caption("🔒 **Version 4.15** – Zuverlässiges Plan-Gedächtnis (Server-Speicherung)")
+st.caption("🔒 **Version 4.18** – Finale, stabile Version (Server-Speicher & Error-Handling)")
 
 # --- STATUS-VARIABLEN ---
 if "messages" not in st.session_state:
@@ -26,6 +26,7 @@ if "strava_context" not in st.session_state:
 if "daten_geladen" not in st.session_state:
     st.session_state.daten_geladen = False
 
+# Listen für mehrere Dokumente/Bilder
 if "doc_names" not in st.session_state:
     st.session_state.doc_names = []
 if "doc_texts" not in st.session_state:
@@ -55,12 +56,14 @@ if physio_cookie:
     except:
         pass
 
-# --- PLAN LOKAL VOM SERVER LADEN (NEU) ---
+# --- PLAN LOKAL VOM SERVER LADEN ---
 if "trainingsplan" not in st.session_state:
     if os.path.exists("mein_plan.txt"):
         try:
             with open("mein_plan.txt", "r", encoding="utf-8") as f:
-                st.session_state.trainingsplan = f.read()
+                plan_inhalt = f.read()
+                if plan_inhalt.strip():  # Nur laden, wenn die Datei nicht leer ist
+                    st.session_state.trainingsplan = plan_inhalt
         except Exception:
             pass
 
@@ -91,7 +94,6 @@ def get_valid_strava_token():
             if res.status_code == 200:
                 data = res.json()
                 access_token = data["access_token"]
-                
                 auth_data["access_token"] = access_token
                 auth_data["refresh_token"] = data["refresh_token"]
                 auth_data["expires_at"] = data["expires_at"]
@@ -153,6 +155,7 @@ if not gemini_key or not access_token:
 
 # --- HAUPT-APP ---
 else:
+    # API Client global für alle Chat/Plan-Funktionen initialisieren
     client = genai.Client(api_key=gemini_key)
 
     if "temp_auth_data" in st.session_state:
@@ -162,7 +165,7 @@ else:
         cookie_manager.delete("auth_paket", key="cookie_del_auth")
         cookie_manager.delete("physio_paket", key="cookie_del_physio")
         
-        # Plan-Datei vom Server löschen
+        # Plan restlos vom Server wischen
         if os.path.exists("mein_plan.txt"):
             os.remove("mein_plan.txt")
             
@@ -221,22 +224,30 @@ else:
     if st.button("⬇️ Strava-Daten laden", key="btn_load_strava"):
         strava_token = get_valid_strava_token()
         if strava_token:
-            res = requests.get(f"https://www.strava.com/api/v3/athlete/activities?per_page=30", headers={"Authorization": f"Bearer {strava_token}"})
-            if res.status_code == 200:
-                activities = res.json()
-                data = ""
-                for act in activities:
-                    t = act.get('sport_type', act.get('type', 'Unbekannt'))
-                    d = act.get('distance', 0) / 1000
-                    s = act.get('average_speed', 0)
-                    date = act.get('start_date_local', '')[:10]
-                    p = act.get('average_heartrate', 'Kein Puls')
-                    info = f"Pace: {(1000/s)/60:.2f} min/km" if t in ["Run", "Lauf"] and s > 0 else f"Geschw.: {s*3.6:.2f} km/h"
-                    data += f"- [{date}] [{t}] {act.get('name')}: {d:.2f} km | {info} | Ø Puls: {p}\n"
-                st.session_state.strava_context = data
-                st.session_state.daten_geladen = True
-                st.success("Daten geladen!")
-            else: st.error("Fehler bei Strava.")
+            with st.spinner("Lade Daten von Strava..."):
+                try:
+                    response = requests.get(f"https://www.strava.com/api/v3/athlete/activities?per_page=30", headers={"Authorization": f"Bearer {strava_token}"})
+                    if response.status_code == 200:
+                        activities = response.json()
+                        if activities:
+                            data = ""
+                            for act in activities:
+                                t = act.get('sport_type', act.get('type', 'Unbekannt'))
+                                d = act.get('distance', 0) / 1000
+                                s = act.get('average_speed', 0)
+                                date = act.get('start_date_local', '')[:10]
+                                p = act.get('average_heartrate', 'Kein Puls')
+                                info = f"Pace: {(1000/s)/60:.2f} min/km" if t in ["Run", "Lauf"] and s > 0 else f"Geschw.: {s*3.6:.2f} km/h"
+                                data += f"- [{date}] [{t}] {act.get('name')}: {d:.2f} km | {info} | Ø Puls: {p}\n"
+                            st.session_state.strava_context = data
+                            st.session_state.daten_geladen = True
+                            st.success("Daten erfolgreich geladen!")
+                        else:
+                            st.warning("Strava hat geantwortet, aber es wurden keine Aktivitäten in deinem Account gefunden.")
+                    else:
+                        st.error(f"Fehler beim Abrufen der Strava-Daten. Statuscode: {response.status_code}")
+                except Exception as e:
+                    st.error(f"Netzwerk- oder Verbindungsfehler: {e}")
 
     if st.session_state.get("daten_geladen"):
         st.subheader("🗓️ 2. Trainingsplan steuern")
@@ -244,33 +255,37 @@ else:
         if col1.button("✨ Neuen Plan erstellen", key="btn_new_plan"):
             with st.spinner("Erstelle neuen Plan..."):
                 prompt = f"Erstelle einen neuen Trainingsplan.\nHistorie:\n{st.session_state.strava_context}\nInstruktionen: {trainer_instructions}\n"
+                if vo2max or laktatschwelle or belastung:
+                    prompt += f"\nPhysiologie: VO2max:{vo2max}, Laktat:{laktatschwelle}, Belastung:{belastung}\n"
                 req = [prompt] + st.session_state.doc_images
                 try:
                     resp = client.models.generate_content(model='gemini-2.5-flash', contents=req)
-                    st.session_state.trainingsplan = resp.text
-                    
-                    # Plan direkt auf dem Server speichern (umgeht Cookie-Limit)
-                    with open("mein_plan.txt", "w", encoding="utf-8") as f:
-                        f.write(resp.text)
-                        
-                    st.rerun()
-                except Exception as e: st.error(f"Fehler: {e}")
+                    if resp.text:
+                        st.session_state.trainingsplan = resp.text
+                        with open("mein_plan.txt", "w", encoding="utf-8") as f:
+                            f.write(resp.text)
+                        st.rerun()
+                    else:
+                        st.error("Die KI hat ein leeres Ergebnis zurückgegeben. Bitte noch einmal klicken.")
+                except Exception as e: st.error(f"Generierungsfehler: {e}")
         
         if st.session_state.get("trainingsplan"):
             if col2.button("🔄 Plan aktualisieren", key="btn_update_plan"):
                 with st.spinner("Passe Plan an..."):
                     prompt = f"Hier ist mein alter Plan:\n{st.session_state.trainingsplan}\n\nHier sind neue Trainingsdaten:\n{st.session_state.strava_context}\n\nAktualisiere den Plan intelligent."
+                    if vo2max or laktatschwelle or belastung:
+                        prompt += f"\nPhysiologie: VO2max:{vo2max}, Laktat:{laktatschwelle}, Belastung:{belastung}\n"
                     req = [prompt] + st.session_state.doc_images
                     try:
                         resp = client.models.generate_content(model='gemini-2.5-flash', contents=req)
-                        st.session_state.trainingsplan = resp.text
-                        
-                        # Plan aktualisiert auf dem Server speichern
-                        with open("mein_plan.txt", "w", encoding="utf-8") as f:
-                            f.write(resp.text)
-                            
-                        st.rerun()
-                    except Exception as e: st.error(f"Fehler: {e}")
+                        if resp.text:
+                            st.session_state.trainingsplan = resp.text
+                            with open("mein_plan.txt", "w", encoding="utf-8") as f:
+                                f.write(resp.text)
+                            st.rerun()
+                        else:
+                            st.error("Die KI hat ein leeres Ergebnis zurückgegeben. Bitte noch einmal klicken.")
+                    except Exception as e: st.error(f"Generierungsfehler: {e}")
 
     # --- SCHNELL-CHECK ---
     if st.session_state.get("trainingsplan"):
@@ -282,7 +297,7 @@ else:
                 req = [f"Gib mir nur für HEUTE ein Training basierend auf:\n{st.session_state.trainingsplan}\nStrava-Daten:\n{st.session_state.get('strava_context', 'Keine neuen geladen.')}"] + st.session_state.doc_images
                 try:
                     resp = client.models.generate_content(model='gemini-2.5-flash', contents=req)
-                    st.write(resp.text)
+                    if resp.text: st.write(resp.text)
                 except Exception as e:
                     st.error(f"Fehler: {e}")
                     
@@ -291,7 +306,7 @@ else:
                 req = [f"Gib mir eine kompakte Zusammenfassung des Trainings für die nächsten 7 Tage basierend auf:\n{st.session_state.trainingsplan}"] + st.session_state.doc_images
                 try:
                     resp = client.models.generate_content(model='gemini-2.5-flash', contents=req)
-                    st.write(resp.text)
+                    if resp.text: st.write(resp.text)
                 except Exception as e:
                     st.error(f"Fehler: {e}")
 
@@ -309,7 +324,8 @@ else:
                 req = [prompt] + st.session_state.doc_images
                 try:
                     resp = client.models.generate_content(model='gemini-2.5-flash', contents=req)
-                    st.markdown(resp.text)
-                    st.session_state.messages.append({"role": "assistant", "content": resp.text})
+                    if resp.text:
+                        st.markdown(resp.text)
+                        st.session_state.messages.append({"role": "assistant", "content": resp.text})
                 except Exception as e:
                     st.error(f"Fehler: {e}")
