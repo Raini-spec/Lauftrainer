@@ -14,7 +14,7 @@ cookie_manager = stx.CookieManager()
 st.write("") # Wichtig, damit Cookies geladen werden
 
 st.title("🏃‍♂️🚴 KI Trainer: Strava & Gemini")
-st.caption("🔒 **Version 4.1** – Passwort-Login & Expander-Schnellcheck")
+st.caption("🔒 **Version 4.2** – Komfort-Login & Auto-Konfigurations-Generator")
 
 # --- STATUS-VARIABLEN ---
 if "messages" not in st.session_state:
@@ -82,27 +82,68 @@ def get_valid_strava_token():
                 return None
     return access_token
 
-# --- LOGIN MIT CONFIG-DATEI & PASSWORT ---
+# --- FLEXIBLER LOGIN-BEREICH ---
 if not gemini_key or not access_token:
-    st.info("👋 Willkommen! Richten wir deine App mit deiner Konfigurationsdatei ein.")
+    st.info("👋 Willkommen! Wähle eine Methode, um deine App zu starten.")
     
-    config_file = st.file_uploader("📥 Konfigurations-Datei (.json) hochladen", type=["json"])
-    master_pw = st.text_input("🔑 Master-Passwort eingeben", type="password")
+    tab1, tab2 = st.tabs(["📁 Schneller Login (Datei + Passwort)", "⌨️ Erstmalige / Manuelle Einrichtung"])
     
-    if st.button("🔐 Entsperren & Einrichten"):
-        if config_file and master_pw:
-            try:
-                content = json.load(config_file)
-                if content.get("master_pw") == master_pw:
-                    cookie_manager.set("auth_paket", json.dumps(content))
-                    st.success("Erfolgreich entsperrt! Bitte lade die Seite neu (F5).")
-                    st.rerun()
-                else:
-                    st.error("Das eingegebene Passwort ist falsch.")
-            except Exception as e:
-                st.error(f"Datei fehlerhaft oder unvollständig: {e}")
-        else:
-            st.warning("Bitte lade deine .json-Datei hoch und gib dein Passwort ein.")
+    with tab1:
+        st.write("Nutze deine bereits erstellte Konfigurationsdatei für den schnellen Start.")
+        config_file = st.file_uploader("📥 Konfigurations-Datei (.json) hochladen", type=["json"], key="upload_tab1")
+        master_pw = st.text_input("🔑 Master-Passwort eingeben", type="password", key="pw_tab1")
+        
+        if st.button("🔐 Entsperren & Einrichten", key="btn_tab1"):
+            if config_file and master_pw:
+                try:
+                    content = json.load(config_file)
+                    if content.get("master_pw") == master_pw:
+                        cookie_manager.set("auth_paket", json.dumps(content))
+                        st.success("Erfolgreich entsperrt! Bitte lade die Seite neu (F5).")
+                        st.rerun()
+                    else:
+                        st.error("Das eingegebene Passwort ist falsch.")
+                except Exception as e:
+                    st.error(f"Datei fehlerhaft: {e}")
+            else:
+                st.warning("Bitte lade eine Datei hoch und gib dein Passwort ein.")
+                
+    with tab2:
+        st.write("Trage deine Schlüssel ein. Die App generiert daraus automatisch deine fertige `config.json`.")
+        
+        in_pw = st.text_input("🔑 Wähle dein Master-Passwort (für zukünftige Logins)", type="password", key="setup_pw")
+        in_gemini = st.text_input("1. Gemini API Key", type="password", key="setup_gemini")
+        in_client_id = st.text_input("2. Strava Client-ID", key="setup_id")
+        in_client_secret = st.text_input("3. Geheimer Clientschlüssel", type="password", key="setup_secret")
+        in_access = st.text_input("4. Strava Zugriffs-Token (Access Token)", type="password", key="setup_access")
+        in_refresh = st.text_input("5. Strava Aktualisierungs-Token (Refresh Token)", type="password", key="setup_refresh")
+        
+        if st.button("🚀 App aktivieren & Datei erstellen", key="btn_setup"):
+            if in_pw and in_gemini and in_client_id and in_client_secret and in_access and in_refresh:
+                neues_paket = {
+                    "master_pw": in_pw,
+                    "gemini_key": in_gemini,
+                    "client_id": in_client_id,
+                    "client_secret": in_client_secret,
+                    "access_token": in_access,
+                    "refresh_token": in_refresh,
+                    "expires_at": 0
+                }
+                cookie_manager.set("auth_paket", json.dumps(neues_paket))
+                st.session_state["auto_config_json"] = json.dumps(neues_paket, indent=2)
+                st.success("App konfiguriert! Lade jetzt unten deine Datei herunter.")
+            else:
+                st.error("Bitte fülle alle Felder aus!")
+                
+        if "auto_config_json" in st.session_state:
+            st.download_button(
+                label="📥 JETZT DEINE CONFIG.JSON HERUNTERLADEN",
+                data=st.session_state["auto_config_json"],
+                file_name="config.json",
+                mime="application/json"
+            )
+            if st.button("🔄 App starten"):
+                st.rerun()
 
 # --- HAUPT-APP ---
 else:
@@ -269,7 +310,6 @@ else:
                 except Exception as e:
                     st.error(f"Fehler: {e}")
 
-        # Ergebnisse in Expander-Elementen anzeigen
         if "heute_plan" in st.session_state:
             with st.expander("🏃‍♂️ Dein Training für heute", expanded=True):
                 st.write(st.session_state.heute_plan)
