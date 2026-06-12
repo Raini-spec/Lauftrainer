@@ -15,7 +15,7 @@ cookie_manager = stx.CookieManager()
 st.write("") 
 
 st.title("🏃‍♂️🚴 KI Trainer: Strava & Gemini")
-st.caption("🔒 **Version 4.13** – Intelligentes Plan-Gedächtnis + Coach Schnell-Check")
+st.caption("🔒 **Version 4.14** – Plan direkt im Ausklappmenü & API-Bugfix")
 
 # --- STATUS-VARIABLEN ---
 if "messages" not in st.session_state:
@@ -149,6 +149,9 @@ if not gemini_key or not access_token:
 
 # --- HAUPT-APP ---
 else:
+    # API Client initialisieren (Bugfix für 'client is not defined')
+    client = genai.Client(api_key=gemini_key)
+
     if "temp_auth_data" in st.session_state:
         cookie_manager.set("auth_paket", json.dumps(st.session_state.temp_auth_data), key="cookie_set_main_auth")
 
@@ -192,7 +195,21 @@ else:
                 else: st.session_state.doc_texts.append(f.read().decode("utf-8"))
             st.success(f"Geladen: {len(st.session_state.doc_names)} Dateien.")
 
+    # --- NEUES AUSKLAPPMENÜ FÜR DEN PLAN ---
+    with st.expander("📅 Aktueller Trainingsplan", expanded=bool(st.session_state.get("trainingsplan"))):
+        if st.session_state.get("trainingsplan"):
+            st.markdown(st.session_state.trainingsplan)
+            st.divider()
+            col_md, col_txt = st.columns(2)
+            with col_md:
+                st.download_button("📥 Als Markdown (.md) speichern", data=st.session_state.trainingsplan, file_name="trainingsplan.md", mime="text/markdown", key="dl_md")
+            with col_txt:
+                st.download_button("📥 Als Textdatei (.txt) speichern", data=st.session_state.trainingsplan, file_name="trainingsplan.txt", mime="text/plain", key="dl_txt")
+        else:
+            st.info("Es ist noch kein Trainingsplan vorhanden. Lade unten deine Strava-Daten und erstelle deinen ersten Plan!")
+
     st.divider()
+    
     st.subheader("🎯 1. Daten abrufen")
     if st.button("⬇️ Strava-Daten laden", key="btn_load_strava"):
         strava_token = get_valid_strava_token()
@@ -242,24 +259,28 @@ else:
                         st.rerun()
                     except Exception as e: st.error(f"Fehler: {e}")
 
-    # --- PLAN ANZEIGEN & SCHNELL-CHECK ---
+    # --- SCHNELL-CHECK ---
     if st.session_state.get("trainingsplan"):
         st.divider()
-        st.subheader("📋 Dein Plan")
-        st.write(st.session_state.trainingsplan)
-        
         st.subheader("⚡ Coach Schnell-Check")
         c1, c2 = st.columns(2)
         if c1.button("🚀 Training heute", key="btn_check_today"):
             with st.spinner("Analysiere heute..."):
-                req = [f"Gib mir nur für HEUTE ein Training basierend auf:\n{st.session_state.trainingsplan}\nDaten:\n{st.session_state.strava_context}"] + st.session_state.doc_images
-                resp = client.models.generate_content(model='gemini-2.5-flash', contents=req)
-                st.write(resp.text)
+                req = [f"Gib mir nur für HEUTE ein Training basierend auf:\n{st.session_state.trainingsplan}\nStrava-Daten:\n{st.session_state.get('strava_context', 'Keine neuen geladen.')}"] + st.session_state.doc_images
+                try:
+                    resp = client.models.generate_content(model='gemini-2.5-flash', contents=req)
+                    st.write(resp.text)
+                except Exception as e:
+                    st.error(f"Fehler: {e}")
+                    
         if c2.button("📅 Wochenplan Zusammenfassung", key="btn_check_week"):
             with st.spinner("Analysiere Woche..."):
                 req = [f"Gib mir eine kompakte Zusammenfassung des Trainings für die nächsten 7 Tage basierend auf:\n{st.session_state.trainingsplan}"] + st.session_state.doc_images
-                resp = client.models.generate_content(model='gemini-2.5-flash', contents=req)
-                st.write(resp.text)
+                try:
+                    resp = client.models.generate_content(model='gemini-2.5-flash', contents=req)
+                    st.write(resp.text)
+                except Exception as e:
+                    st.error(f"Fehler: {e}")
 
     st.divider()
     st.subheader("💬 Chat mit Coach")
@@ -271,9 +292,11 @@ else:
         with st.chat_message("user"): st.markdown(user_input)
         with st.chat_message("assistant"):
             with st.spinner("Tippt..."):
-                client = genai.Client(api_key=gemini_key)
                 prompt = f"Du bist Coach. Plan:\n{st.session_state.get('trainingsplan')}\nDaten:\n{st.session_state.strava_context}\nFrage: {user_input}"
                 req = [prompt] + st.session_state.doc_images
-                resp = client.models.generate_content(model='gemini-2.5-flash', contents=req)
-                st.markdown(resp.text)
-                st.session_state.messages.append({"role": "assistant", "content": resp.text})
+                try:
+                    resp = client.models.generate_content(model='gemini-2.5-flash', contents=req)
+                    st.markdown(resp.text)
+                    st.session_state.messages.append({"role": "assistant", "content": resp.text})
+                except Exception as e:
+                    st.error(f"Fehler: {e}")
