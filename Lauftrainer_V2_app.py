@@ -14,7 +14,7 @@ cookie_manager = stx.CookieManager()
 st.write("") # Wichtig, damit Cookies geladen werden
 
 st.title("🏃‍♂️🚴 KI Trainer: Strava & Gemini")
-st.caption("🔒 **Version 4.8** – Absolut stabil gegen DuplicateWidgetID-Fehler")
+st.caption("🔒 **Version 4.8** – Vollständiger DuplicateWidgetID & Cookie-Key Fix")
 
 # --- STATUS-VARIABLEN ---
 if "messages" not in st.session_state:
@@ -81,7 +81,7 @@ def get_valid_strava_token():
                 auth_data["access_token"] = access_token
                 auth_data["refresh_token"] = data["refresh_token"]
                 auth_data["expires_at"] = data["expires_at"]
-                cookie_manager.set("auth_paket", json.dumps(auth_data))
+                cookie_manager.set("auth_paket", json.dumps(auth_data), key="cookie_set_refresh")
             else:
                 st.error("Token-Refresh fehlgeschlagen.")
                 return None
@@ -168,13 +168,12 @@ if not gemini_key or not access_token:
 # --- HAUPT-APP ---
 else:
     if "temp_auth_data" in st.session_state:
-        cookie_manager.set("auth_paket", json.dumps(st.session_state.temp_auth_data), key="set_auth_main")
+        cookie_manager.set("auth_paket", json.dumps(st.session_state.temp_auth_data), key="cookie_set_main_auth")
 
     if st.sidebar.button("⚠️ Lokale Daten von diesem Gerät löschen", key="btn_clear_device_data"):
-        cookie_manager.delete("auth_paket", key="del_auth")
-        cookie_manager.delete("physio_paket", key="del_physio")
+        cookie_manager.delete("auth_paket", key="cookie_del_auth")
+        cookie_manager.delete("physio_paket", key="cookie_del_physio")
         
-        # Nur gezielt App-Daten löschen, um Streamlits interne Widgets nicht zu zerstören
         keys_to_clear = [
             "messages", "strava_context", "daten_geladen", "doc_name", "doc_text",
             "temp_auth_data", "pending_auth", "auto_config_json", "heute_plan", "woche_plan", "trainingsplan"
@@ -190,7 +189,7 @@ else:
         new_instructions = st.text_area("Anweisungen", value=trainer_instructions, height=150, key="input_instructions")
         if st.button("💾 Instruktionen Lokal Speichern", key="btn_save_instructions"):
             physio_data["instructions"] = new_instructions
-            cookie_manager.set("physio_paket", json.dumps(physio_data), key="set_physio_instruktionen")
+            cookie_manager.set("physio_paket", json.dumps(physio_data), key="cookie_set_instructions")
             st.success("Gespeichert!")
 
     with st.expander("📊 Physiologische Werte"):
@@ -206,7 +205,7 @@ else:
             physio_data["vo2max"] = new_vo2max
             physio_data["laktat"] = new_laktat
             physio_data["belastung"] = new_belastung
-            cookie_manager.set("physio_paket", json.dumps(physio_data), key="set_physio_instruktionen")
+            cookie_manager.set("physio_paket", json.dumps(physio_data), key="cookie_set_physio_values")
             st.success("Werte lokal gespeichert!")
 
     with st.expander("📄 Hintergrundwissen (PDF/TXT) verwalten"):
