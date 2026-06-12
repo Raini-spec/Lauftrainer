@@ -14,7 +14,7 @@ cookie_manager = stx.CookieManager()
 st.write("") # Wichtig, damit Cookies geladen werden
 
 st.title("🏃‍♂️🚴 KI Trainer: Strava & Gemini")
-st.caption("🔒 **Version 4.6** – Fix für fehlerfreies Löschen der lokalen Daten")
+st.caption("🔒 **Version 4.7** – Absolut stabil gegen DuplicateWidgetID-Fehler")
 
 # --- STATUS-VARIABLEN ---
 if "messages" not in st.session_state:
@@ -157,9 +157,10 @@ if not gemini_key or not access_token:
                 label="📥 JETZT DEINE CONFIG.JSON HERUNTERLADEN",
                 data=st.session_state["auto_config_json"],
                 file_name="config.json",
-                mime="application/json"
+                mime="application/json",
+                key="btn_download_config_auto"
             )
-            if st.button("🔄 App starten"):
+            if st.button("🔄 App starten", key="btn_start_after_setup"):
                 if "pending_auth" in st.session_state:
                     st.session_state.temp_auth_data = st.session_state.pending_auth
                 st.rerun()
@@ -167,49 +168,57 @@ if not gemini_key or not access_token:
 # --- HAUPT-APP ---
 else:
     if "temp_auth_data" in st.session_state:
-        cookie_manager.set("auth_paket", json.dumps(st.session_state.temp_auth_data))
+        cookie_manager.set("auth_paket", json.dumps(st.session_state.temp_auth_data), key="set_auth_main")
 
-    if st.sidebar.button("⚠️ Lokale Daten von diesem Gerät löschen"):
-        cookie_manager.delete("auth_paket")
-        cookie_manager.delete("physio_paket")
-        for key in list(st.session_state.keys()):
-            del st.session_state[key]
+    if st.sidebar.button("⚠️ Lokale Daten von diesem Gerät löschen", key="btn_clear_device_data"):
+        cookie_manager.delete("auth_paket", key="del_auth")
+        cookie_manager.delete("physio_paket", key="del_physio")
+        
+        # Nur gezielt App-Daten löschen, um Streamlits interne Widgets nicht zu zerstören
+        keys_to_clear = [
+            "messages", "strava_context", "daten_geladen", "doc_name", "doc_text",
+            "temp_auth_data", "pending_auth", "auto_config_json", "heute_plan", "woche_plan", "trainingsplan"
+        ]
+        for key in keys_to_clear:
+            if key in st.session_state:
+                del st.session_state[key]
+                
         time.sleep(0.5)
         st.rerun()
 
     with st.expander("🧠 Trainer-Instruktionen bearbeiten"):
-        new_instructions = st.text_area("Anweisungen", value=trainer_instructions, height=150)
-        if st.button("💾 Instruktionen Lokal Speichern"):
+        new_instructions = st.text_area("Anweisungen", value=trainer_instructions, height=150, key="input_instructions")
+        if st.button("💾 Instruktionen Lokal Speichern", key="btn_save_instructions"):
             physio_data["instructions"] = new_instructions
-            cookie_manager.set("physio_paket", json.dumps(physio_data))
+            cookie_manager.set("physio_paket", json.dumps(physio_data), key="set_physio_instruktionen")
             st.success("Gespeichert!")
 
     with st.expander("📊 Physiologische Werte"):
         col_v, col_l, col_b = st.columns(3)
         with col_v:
-            new_vo2max = st.text_input("VO2max", value=vo2max)
+            new_vo2max = st.text_input("VO2max", value=vo2max, key="input_vo2max")
         with col_l:
-            new_laktat = st.text_input("Laktatschwelle", value=laktatschwelle)
+            new_laktat = st.text_input("Laktatschwelle", value=laktatschwelle, key="input_laktat")
         with col_b:
-            new_belastung = st.text_input("Aktuelle Belastung", value=belastung)
+            new_belastung = st.text_input("Aktuelle Belastung", value=belastung, key="input_belastung")
             
-        if st.button("💾 Werte speichern"):
+        if st.button("💾 Werte speichern", key="btn_save_physio"):
             physio_data["vo2max"] = new_vo2max
             physio_data["laktat"] = new_laktat
             physio_data["belastung"] = new_belastung
-            cookie_manager.set("physio_paket", json.dumps(physio_data))
+            cookie_manager.set("physio_paket", json.dumps(physio_data), key="set_physio_instruktionen")
             st.success("Werte lokal gespeichert!")
 
     with st.expander("📄 Hintergrundwissen (PDF/TXT) verwalten"):
         st.info("💡 Dokumente müssen pro Sitzung neu geladen werden.")
         if st.session_state.doc_name:
             st.success(f"**Aktiv:** {st.session_state.doc_name}")
-            if st.button("🗑️ Dokument entfernen"):
+            if st.button("🗑️ Dokument entfernen", key="btn_remove_doc"):
                 st.session_state.doc_name = ""
                 st.session_state.doc_text = ""
                 st.rerun()
         else:
-            uploaded_file = st.file_uploader("Datei hochladen", type=["txt", "md", "pdf"])
+            uploaded_file = st.file_uploader("Datei hochladen", type=["txt", "md", "pdf"], key="upload_knowledge_file")
             if uploaded_file:
                 text = ""
                 if uploaded_file.name.endswith(".pdf"):
@@ -224,9 +233,9 @@ else:
                 st.success("Temporär geladen!")
                 st.rerun()
 
-    anzahl_aktivitaeten = st.slider("Historie (Anzahl Aktivitäten)", 5, 50, 30)
+    anzahl_aktivitaeten = st.slider("Historie (Anzahl Aktivitäten)", 5, 50, 30, key="slider_history")
 
-    if st.button("🚀 Neue Strava-Daten laden & analysieren"):
+    if st.button("🚀 Neue Strava-Daten laden & analysieren", key="btn_load_and_analyze"):
         strava_token = get_valid_strava_token()
         if strava_token:
             with st.spinner("Lade Daten von Strava..."):
@@ -289,7 +298,8 @@ else:
                 label="📥 Als Markdown (.md) speichern",
                 data=plan_text,
                 file_name=f"trainingsplan_{datetime.now().strftime('%Y%m%d')}.md",
-                mime="text/markdown"
+                mime="text/markdown",
+                key="btn_download_md"
             )
             
         with col_txt:
@@ -297,7 +307,8 @@ else:
                 label="📥 Als Textdatei (.txt) speichern",
                 data=plan_text,
                 file_name=f"trainingsplan_{datetime.now().strftime('%Y%m%d')}.txt",
-                mime="text/plain"
+                mime="text/plain",
+                key="btn_download_txt"
             )
 
     # --- SCHNELL-CHECK: TAGES- & WOCHENPLAN ---
@@ -309,7 +320,7 @@ else:
         client = genai.Client(api_key=gemini_key)
         heute = datetime.now().strftime('%Y-%m-%d')
         
-        if col1.button("🚀 Training heute"):
+        if col1.button("🚀 Training heute", key="btn_check_today"):
             with st.spinner("Erstelle Tagesplan..."):
                 prompt_heute = f"""Gib mir nur für HEUTE ein konkretes Training. 
                 Instruktionen: {trainer_instructions}
@@ -322,7 +333,7 @@ else:
                 except Exception as e:
                     st.error(f"Fehler: {e}")
 
-        if col2.button("📅 Wochenplan erstellen"):
+        if col2.button("📅 Wochenplan erstellen", key="btn_check_week"):
             with st.spinner("Erstelle Wochenplan..."):
                 prompt_woche = f"""Erstelle einen kompakten Trainingsplan für die nächsten 7 Tage.
                 Instruktionen: {trainer_instructions}
@@ -351,7 +362,7 @@ else:
             st.markdown(msg["content"])
 
     if st.session_state.get("daten_geladen", False): 
-        if user_input := st.chat_input("Tippe deine Nachricht an den Coach..."):
+        if user_input := st.chat_input("Tippe deine Nachricht an den Coach...", key="input_chat_box"):
             st.session_state.messages.append({"role": "user", "content": user_input})
             with st.chat_message("user"):
                 st.markdown(user_input)
