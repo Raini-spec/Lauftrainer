@@ -15,7 +15,7 @@ cookie_manager = stx.CookieManager()
 st.write("") # Wichtig, damit Cookies geladen werden
 
 st.title("🏃‍♂️🚴 KI Trainer: Strava & Gemini")
-st.caption("🔒 **Version 4.9** – Screenshot-Analyse für Gesundheitsdaten integriert")
+st.caption("🔒 **Version 4.10** – Multi-Upload für bis zu 5 Dateien (Screenshots/PDFs/Texte)")
 
 # --- STATUS-VARIABLEN ---
 if "messages" not in st.session_state:
@@ -24,12 +24,14 @@ if "strava_context" not in st.session_state:
     st.session_state.strava_context = ""
 if "daten_geladen" not in st.session_state:
     st.session_state.daten_geladen = False
-if "doc_name" not in st.session_state:
-    st.session_state.doc_name = ""
-if "doc_text" not in st.session_state:
-    st.session_state.doc_text = ""
-if "doc_image" not in st.session_state:
-    st.session_state.doc_image = None
+
+# Listen für mehrere Dokumente/Bilder
+if "doc_names" not in st.session_state:
+    st.session_state.doc_names = []
+if "doc_texts" not in st.session_state:
+    st.session_state.doc_texts = []
+if "doc_images" not in st.session_state:
+    st.session_state.doc_images = []
 
 # --- DATEN AUS DEM "PAKET"-COOKIE LESEN ---
 auth_cookie = cookie_manager.get("auth_paket")
@@ -178,7 +180,7 @@ else:
         cookie_manager.delete("physio_paket", key="cookie_del_physio")
         
         keys_to_clear = [
-            "messages", "strava_context", "daten_geladen", "doc_name", "doc_text", "doc_image",
+            "messages", "strava_context", "daten_geladen", "doc_names", "doc_texts", "doc_images",
             "temp_auth_data", "pending_auth", "auto_config_json", "heute_plan", "woche_plan", "trainingsplan"
         ]
         for key in keys_to_clear:
@@ -212,33 +214,36 @@ else:
             st.success("Werte lokal gespeichert!")
 
     with st.expander("📄 Hintergrundwissen (Bilder/PDF/TXT) verwalten"):
-        st.info("💡 Lade hier Screenshots (z.B. Gesundheitsdaten) oder PDFs/Texte hoch.")
-        if st.session_state.doc_name:
-            st.success(f"**Aktiv:** {st.session_state.doc_name}")
-            if st.button("🗑️ Dokument entfernen", key="btn_remove_doc"):
-                st.session_state.doc_name = ""
-                st.session_state.doc_text = ""
-                st.session_state.doc_image = None
+        st.info("💡 Lade hier bis zu 5 Dateien (Screenshots oder PDFs/Texte) gleichzeitig hoch.")
+        if st.session_state.doc_names:
+            st.success(f"**Aktiv ({len(st.session_state.doc_names)} Datei/en):** {', '.join(st.session_state.doc_names)}")
+            if st.button("🗑️ Dokumente entfernen", key="btn_remove_doc"):
+                st.session_state.doc_names = []
+                st.session_state.doc_texts = []
+                st.session_state.doc_images = []
                 st.rerun()
         else:
-            uploaded_file = st.file_uploader("Datei hochladen", type=["txt", "md", "pdf", "png", "jpg", "jpeg"], key="upload_knowledge_file")
-            if uploaded_file:
-                if uploaded_file.name.lower().endswith(('.png', '.jpg', '.jpeg')):
-                    st.session_state.doc_image = Image.open(uploaded_file)
-                    st.session_state.doc_text = ""
-                elif uploaded_file.name.lower().endswith(".pdf"):
-                    text = ""
-                    reader = PyPDF2.PdfReader(uploaded_file)
-                    for page in reader.pages:
-                        text += page.extract_text() + "\n"
-                    st.session_state.doc_text = text
-                    st.session_state.doc_image = None
-                else:
-                    st.session_state.doc_text = uploaded_file.read().decode("utf-8")
-                    st.session_state.doc_image = None
+            uploaded_files = st.file_uploader("Dateien hochladen", type=["txt", "md", "pdf", "png", "jpg", "jpeg"], accept_multiple_files=True, key="upload_knowledge_files")
+            if uploaded_files:
+                st.session_state.doc_names = []
+                st.session_state.doc_texts = []
+                st.session_state.doc_images = []
                 
-                st.session_state.doc_name = uploaded_file.name
-                st.success("Temporär geladen!")
+                # Auf max 5 Dateien begrenzen
+                for f in uploaded_files[:5]:
+                    st.session_state.doc_names.append(f.name)
+                    if f.name.lower().endswith(('.png', '.jpg', '.jpeg')):
+                        st.session_state.doc_images.append(Image.open(f))
+                    elif f.name.lower().endswith(".pdf"):
+                        text = ""
+                        reader = PyPDF2.PdfReader(f)
+                        for page in reader.pages:
+                            text += page.extract_text() + "\n"
+                        st.session_state.doc_texts.append(text)
+                    else:
+                        st.session_state.doc_texts.append(f.read().decode("utf-8"))
+                        
+                st.success("Dateien temporär geladen!")
                 st.rerun()
 
     anzahl_aktivitaeten = st.slider("Historie (Anzahl Aktivitäten)", 5, 50, 30, key="slider_history")
@@ -278,7 +283,9 @@ else:
                         prompt = f"Analysiere diesen Trainingsverlauf präzise. Heute ist der {heute}.\nHistorie:\n{aktivitaets_daten}\n"
                         
                         if trainer_instructions: prompt += f"\nAnweisungen:\n{trainer_instructions}"
-                        if st.session_state.doc_text: prompt += f"\nHintergrunddaten (Text):\n{st.session_state.doc_text}"
+                        if st.session_state.doc_texts: 
+                            kombinierter_text = "\n\n".join(st.session_state.doc_texts)
+                            prompt += f"\nHintergrunddaten (Text):\n{kombinierter_text}"
                         if vo2max or laktatschwelle or belastung:
                             prompt += "\nPhysiologische Kennwerte:\n"
                             if vo2max: prompt += f"- VO2max: {vo2max}\n"
@@ -286,8 +293,8 @@ else:
                             if belastung: prompt += f"- Aktuelle Belastung: {belastung}\n"
                             
                         request_contents = [prompt]
-                        if st.session_state.get("doc_image"):
-                            request_contents.append(st.session_state.doc_image)
+                        if st.session_state.doc_images:
+                            request_contents.extend(st.session_state.doc_images)
                             
                         try:
                             antwort = client.models.generate_content(model='gemini-2.5-flash', contents=request_contents)
@@ -339,11 +346,11 @@ else:
                 Daten: {st.session_state.strava_context}
                 Physiologie: VO2max:{vo2max}, Laktat:{laktatschwelle}, Belastung:{belastung}
                 Regel: Max. 3 Sätze, keine Begrüßung, nur das Wesentliche (Dauer, Intensität, Pace).
-                Wenn ein Bild angehängt ist, nutze die Gesundheitsdaten darin für deine Bewertung."""
+                Nutze auch alle hochgeladenen Dokumente und Bilder für deine Bewertung."""
                 
                 request_contents = [prompt_heute]
-                if st.session_state.get("doc_image"):
-                    request_contents.append(st.session_state.doc_image)
+                if st.session_state.doc_images:
+                    request_contents.extend(st.session_state.doc_images)
                     
                 try:
                     antwort = client.models.generate_content(model='gemini-2.5-flash', contents=request_contents)
@@ -358,11 +365,11 @@ else:
                 Daten: {st.session_state.strava_context}
                 Physiologie: VO2max:{vo2max}, Laktat:{laktatschwelle}, Belastung:{belastung}
                 Format: Kurze Liste (Tag: Training). Fokus auf Effizienz, keine Begrüßung.
-                Wenn ein Bild angehängt ist, nutze die Gesundheitsdaten darin für deine Planung."""
+                Nutze auch alle hochgeladenen Dokumente und Bilder für deine Planung."""
                 
                 request_contents = [prompt_woche]
-                if st.session_state.get("doc_image"):
-                    request_contents.append(st.session_state.doc_image)
+                if st.session_state.doc_images:
+                    request_contents.extend(st.session_state.doc_images)
                     
                 try:
                     antwort = client.models.generate_content(model='gemini-2.5-flash', contents=request_contents)
@@ -400,21 +407,20 @@ else:
                     sys_prompt = f"""
                     Du bist ein Ausdauer-Coach. Heute ist der {heute}. Beantworte die Nachricht.
                     Trainingsdaten:\n{st.session_state.strava_context}
-                    Hintergrund:\n{st.session_state.doc_text}
                     Instruktionen:\n{trainer_instructions}
                     VO2max: {vo2max}
                     Laktatschwelle: {laktatschwelle}
                     Aktuelle Belastung: {belastung}
-                    
-                    Bisheriger Chat:
-                    {history}
-                    
-                    Wenn dem System ein Bild beigefügt wurde, nutze diese visuellen Daten, um deine Antwort präziser zu formulieren.
                     """
                     
+                    if st.session_state.doc_texts: 
+                        sys_prompt += "\nHintergrunddaten (Text):\n" + "\n\n".join(st.session_state.doc_texts)
+                    
+                    sys_prompt += f"\n\nBisheriger Chat:\n{history}\n\nBerücksichtige auch die vom User hochgeladenen Bilder."
+                    
                     request_contents = [sys_prompt]
-                    if st.session_state.get("doc_image"):
-                        request_contents.append(st.session_state.doc_image)
+                    if st.session_state.doc_images:
+                        request_contents.extend(st.session_state.doc_images)
                         
                     try:
                         antwort = client.models.generate_content(model='gemini-2.5-flash', contents=request_contents)
