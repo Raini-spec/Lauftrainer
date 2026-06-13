@@ -16,12 +16,11 @@ cookie_manager = stx.CookieManager()
 st.write("") 
 
 st.title("🏃‍♂️🚴 KI Trainer: Strava & Gemini")
-st.caption("🔒 **Version 4.20** – Dashboard in der Sidebar & Adaptiver Wochenplan")
+st.caption("🔒 **Version 4.21** – Streamlined UI (Automatischer Datenabruf & Bereinigt)")
 
 # --- STATUS-VARIABLEN ---
 if "messages" not in st.session_state: st.session_state.messages = []
 if "strava_context" not in st.session_state: st.session_state.strava_context = ""
-if "daten_geladen" not in st.session_state: st.session_state.daten_geladen = False
 if "doc_names" not in st.session_state: st.session_state.doc_names = []
 if "doc_texts" not in st.session_state: st.session_state.doc_texts = []
 if "doc_images" not in st.session_state: st.session_state.doc_images = []
@@ -82,6 +81,56 @@ def get_valid_strava_token():
                 return None
     return auth_data.get("access_token")
 
+# --- AUTOMATISCHER HINTERGRUND-DOWNLOAD VON STRAVA ---
+def load_and_format_strava_data():
+    strava_token = get_valid_strava_token()
+    if not strava_token:
+        return False
+    try:
+        response = requests.get(f"https://www.strava.com/api/v3/athlete/activities?per_page=30", headers={"Authorization": f"Bearer {strava_token}"})
+        if response.status_code == 200:
+            activities = response.json()
+            if activities:
+                data = ""
+                last_three = []
+                for act in activities:
+                    t = act.get('sport_type', act.get('type', 'Unbekannt'))
+                    d = act.get('distance', 0) / 1000
+                    s = act.get('average_speed', 0)
+                    date = act.get('start_date_local', '')[:10]
+                    p = act.get('average_heartrate', 'Kein Puls')
+                    
+                    t_de = "Lauf" if t in ["Run", "Lauf"] else ("Radfahren" if t in ["Ride", "Cycling"] else t)
+                    info = f"Pace: {(1000/s)/60:.2f} min/km" if t in ["Run", "Lauf"] and s > 0 else f"Geschw.: {s*3.6:.2f} km/h"
+                    data += f"- [{date}] [{t}] {act.get('name')}: {d:.2f} km | {info} | Ø Puls: {p}\n"
+                    
+                    if len(last_three) < 3:
+                        try:
+                            dt = datetime.strptime(date, "%Y-%m-%d")
+                            date_str = dt.strftime("%d.%m.%y")
+                        except: date_str = date
+                        last_three.append(f"• {date_str} - {t_de} {d:.1f} km")
+                        
+                st.session_state.strava_context = data
+                st.session_state.last_three_activities = last_three
+                
+                if "leistungsstatus" in st.session_state:
+                    st.session_state.leistungsstatus["letzte_aktivitaeten"] = last_three
+                    try:
+                        with open(get_status_filename(), "w", encoding="utf-8") as f:
+                            json.dump(st.session_state.leistungsstatus, f, ensure_ascii=False, indent=2)
+                    except: pass
+                return True
+            else:
+                st.warning("Keine Aktivitäten auf Strava gefunden.")
+                return False
+        else:
+            st.error(f"Fehler beim Abrufen der Strava-Daten. Statuscode: {response.status_code}")
+            return False
+    except Exception as e:
+        st.error(f"Verbindungsfehler zu Strava: {e}")
+        return False
+
 # --- DATEIEN VOM SERVER IN DEN SESSION STATE LADEN ---
 if "trainingsplan" not in st.session_state:
     filename = get_plan_filename()
@@ -129,16 +178,14 @@ with st.sidebar:
         
         st.markdown(f"🔥 **Belastung:**\n`{status.get('belastung', '---')}`")
     else:
-        st.info("Noch kein Leistungsstatus berechnet. Lade deine Strava-Daten und aktualisiere den Wochenplan!")
+        st.info("Noch kein Leistungsstatus berechnet. Aktualisiere einfach deinen Wochenplan!")
         
     st.divider()
     st.header("👟 Letzte Aktivitäten")
     if "leistungsstatus" in st.session_state and st.session_state.leistungsstatus.get("letzte_aktivitaeten"):
-        for act in st.session_state.leistungsstatus.get("letzte_aktivitaeten"):
-            st.write(act)
+        for act in st.session_state.leistungsstatus.get("letzte_aktivitaeten"): st.write(act)
     elif "last_three_activities" in st.session_state:
-        for act in st.session_state.last_three_activities:
-            st.write(act)
+        for act in st.session_state.last_three_activities: st.write(act)
     else:
         st.caption("Keine Aktivitäten geladen.")
         
@@ -146,13 +193,11 @@ with st.sidebar:
     if st.sidebar.button("⚠️ Lokale Daten löschen", key="btn_clear_device_data"):
         cookie_manager.delete("auth_paket", key="cookie_del_auth")
         cookie_manager.delete("physio_paket", key="cookie_del_physio")
-        
         for f_name in [get_plan_filename(), get_woche_filename(), get_status_filename()]:
             if os.path.exists(f_name):
                 try: os.remove(f_name)
                 except: pass
-                
-        for key in ["messages", "strava_context", "daten_geladen", "doc_names", "doc_texts", "doc_images", "temp_auth_data", "pending_auth", "auto_config_json", "trainingsplan", "wochenplan", "leistungsstatus", "last_three_activities", "upload_knowledge_files"]:
+        for key in ["messages", "strava_context", "doc_names", "doc_texts", "doc_images", "temp_auth_data", "pending_auth", "auto_config_json", "trainingsplan", "wochenplan", "leistungsstatus", "last_three_activities", "upload_knowledge_files"]:
             if key in st.session_state: del st.session_state[key]
         time.sleep(0.5)
         st.rerun()
@@ -250,7 +295,7 @@ else:
             st.divider()
             st.download_button("📥 Wochenplan speichern (.md)", data=st.session_state.wochenplan, file_name="wochenplan.md", mime="text/markdown", key="dl_wp")
         else:
-            st.info("Kein Wochenplan vorhanden. Hole deine Strava-Daten und klicke auf 'Wochenplan & Status aktualisieren'!")
+            st.info("Kein Wochenplan vorhanden. Klicke unten auf 'Wochenplan & Status aktualisieren', um ihn zu generieren!")
 
     with st.expander("🏆 Langfristiger Masterplan", expanded=False):
         if st.session_state.get("trainingsplan"):
@@ -264,74 +309,28 @@ else:
 
     st.divider()
     
-    # --- SCHRITT 1: STRAVA-DATEN HOLEN ---
-    st.subheader("🎯 1. Daten abrufen")
-    if st.button("⬇️ Strava-Daten laden", key="btn_load_strava"):
-        strava_token = get_valid_strava_token()
-        if strava_token:
-            with st.spinner("Lade Daten von Strava..."):
-                try:
-                    response = requests.get(f"https://www.strava.com/api/v3/athlete/activities?per_page=30", headers={"Authorization": f"Bearer {strava_token}"})
-                    if response.status_code == 200:
-                        activities = response.json()
-                        if activities:
-                            data = ""
-                            last_three = []
-                            for act in activities:
-                                t = act.get('sport_type', act.get('type', 'Unbekannt'))
-                                d = act.get('distance', 0) / 1000
-                                s = act.get('average_speed', 0)
-                                date = act.get('start_date_local', '')[:10]
-                                p = act.get('average_heartrate', 'Kein Puls')
-                                
-                                t_de = "Lauf" if t in ["Run", "Lauf"] else ("Radfahren" if t in ["Ride", "Cycling"] else t)
-                                info = f"Pace: {(1000/s)/60:.2f} min/km" if t in ["Run", "Lauf"] and s > 0 else f"Geschw.: {s*3.6:.2f} km/h"
-                                data += f"- [{date}] [{t}] {act.get('name')}: {d:.2f} km | {info} | Ø Puls: {p}\n"
-                                
-                                if len(last_three) < 3:
-                                    try:
-                                        dt = datetime.strptime(date, "%Y-%m-%d")
-                                        date_str = dt.strftime("%d.%m.%y")
-                                    except: date_str = date
-                                    last_three.append(f"• {date_str} - {t_de} {d:.1f} km")
-                                    
-                            st.session_state.strava_context = data
-                            st.session_state.last_three_activities = last_three
-                            st.session_state.daten_geladen = True
-                            
-                            if "leistungsstatus" in st.session_state:
-                                st.session_state.leistungsstatus["letzte_aktivitaeten"] = last_three
-                                with open(get_status_filename(), "w", encoding="utf-8") as f:
-                                    json.dump(st.session_state.leistungsstatus, f, ensure_ascii=False, indent=2)
-                                    
-                            st.success("Daten erfolgreich geladen! Letzte Aktivitäten in der Sidebar aktualisiert.")
-                            st.rerun()
-                        else: st.warning("Keine Aktivitäten gefunden.")
-                    else: st.error(f"Fehler bei Strava. Code: {response.status_code}")
-                except Exception as e: st.error(f"Verbindungsfehler: {e}")
-
-    # --- SCHRITT 2: STEUERUNG DER PLÄNE (2-KNOPF-SYSTEM) ---
-    if st.session_state.get("daten_geladen"):
-        st.subheader("🗓️ 2. Trainingspläne & Status steuern")
-        
-        if not st.session_state.get("trainingsplan"):
-            if st.button("✨ Großen Masterplan initial erstellen", key="btn_new_plan"):
-                with st.spinner("Erstelle langfristigen Masterplan..."):
+    # --- STEUERUNG DER PLÄNE (AUTOMATISCHER DATENABRUF INTEGRIERT) ---
+    st.subheader("🗓️ Trainingspläne & Status steuern")
+    
+    if not st.session_state.get("trainingsplan"):
+        if st.button("✨ Großen Masterplan initial erstellen (lädt Strava-Daten)", key="btn_new_plan"):
+            with st.spinner("Lade aktuelle Strava-Daten und erstelle langfristigen Masterplan..."):
+                if load_and_format_strava_data():
                     prompt = f"Erstelle einen neuen langfristigen Masterplan bis zum Marathon am 05.07.2026.\nHistorie:\n{st.session_state.strava_context}\nInstruktionen: {trainer_instructions}\n"
                     try:
                         resp = client.models.generate_content(model='gemini-2.5-flash', contents=[prompt] + st.session_state.doc_images)
                         if resp.text:
                             st.session_state.trainingsplan = resp.text
-                            with open(get_plan_filename(), "w", encoding="utf-8") as f:
-                                f.write(resp.text)
-                            st.success("Masterplan erfolgreich auf dem Server gesichert!")
+                            with open(get_plan_filename(), "w", encoding="utf-8") as f: f.write(resp.text)
+                            st.success("Masterplan erfolgreich erstellt!")
                             st.rerun()
                     except Exception as e: st.error(f"Fehler: {e}")
-        else:
-            c_wp, c_mp = st.columns(2)
-            with c_wp:
-                if st.button("📅 Wochenplan & Status aktualisieren", key="btn_update_woche"):
-                    with st.spinner("Berechne adaptiven Wochenplan & Leistungsstatus..."):
+    else:
+        c_wp, c_mp = st.columns(2)
+        with c_wp:
+            if st.button("📅 Wochenplan & Status aktualisieren (lädt Strava-Daten)", key="btn_update_woche"):
+                with st.spinner("Hole Strava-Daten und berechne adaptiven Wochenplan..."):
+                    if load_and_format_strava_data():
                         prompt = f"""
                         Du bist der persönliche KI-Laufcoach des Athleten.
                         Hier ist der aktuelle langfristige Masterplan:
@@ -379,52 +378,30 @@ else:
                                     with open(get_status_filename(), "w", encoding="utf-8") as f:
                                         json.dump(s_json, f, ensure_ascii=False, indent=2)
                                     st.session_state.leistungsstatus = s_json
-                                except Exception as json_err:
-                                    st.error(f"Status-Parsing-Fehler: {json_err}")
+                                except Exception as json_err: st.error(f"Status-Parsing-Fehler: {json_err}")
                                     
                                 st.session_state.wochenplan = woche_part
-                                with open(get_woche_filename(), "w", encoding="utf-8") as f:
-                                    f.write(woche_part)
+                                with open(get_woche_filename(), "w", encoding="utf-8") as f: f.write(woche_part)
                                 st.success("Wochenplan & Leistungsstatus erfolgreich aktualisiert!")
                                 st.rerun()
                             else: st.error("Fehler im KI-Antwortformat. Bitte erneut versuchen.")
                         except Exception as e: st.error(f"Fehler bei Verbindung: {e}")
-            
-            with c_mp:
-                if st.button("🏆 Masterplan aktualisieren", key="btn_update_master"):
-                    with st.spinner("Aktualisiere großen Masterplan..."):
+        
+        with c_mp:
+            if st.button("🏆 Masterplan aktualisieren (lädt Strava-Daten)", key="btn_update_master"):
+                with st.spinner("Hole Strava-Daten und aktualisiere großen Masterplan..."):
+                    if load_and_format_strava_data():
                         prompt = f"Hier ist mein alter Masterplan:\n{st.session_state.trainingsplan}\n\nHier sind neue Trainingsdaten:\n{st.session_state.strava_context}\n\nInstruktionen:\n{trainer_instructions}\n\nSchreibe den großen Masterplan intelligent bis zum 05.07.2026 neu."
                         try:
                             resp = client.models.generate_content(model='gemini-2.5-flash', contents=[prompt] + st.session_state.doc_images)
                             if resp.text:
                                 st.session_state.trainingsplan = resp.text
-                                with open(get_plan_filename(), "w", encoding="utf-8") as f:
-                                    f.write(resp.text)
+                                with open(get_plan_filename(), "w", encoding="utf-8") as f: f.write(resp.text)
                                 st.success("Langfristiger Masterplan erfolgreich aktualisiert!")
                                 st.rerun()
                         except Exception as e: st.error(f"Fehler: {e}")
 
-    # --- COACH SCHNELL-CHECK ---
-    if st.session_state.get("trainingsplan"):
-        st.divider()
-        st.subheader("⚡ Coach Schnell-Check")
-        c1, c2 = st.columns(2)
-        if c1.button("🚀 Training heute", key="btn_check_today"):
-            with st.spinner("Analysiere heute..."):
-                req = [f"Gib mir nur für HEUTE ein Training basierend auf:\n{st.session_state.trainingsplan}\nStrava-Daten:\n{st.session_state.get('strava_context', 'Keine neuen geladen.')}"] + st.session_state.doc_images
-                try:
-                    resp = client.models.generate_content(model='gemini-2.5-flash', contents=req)
-                    if resp.text: st.write(resp.text)
-                except Exception as e: st.error(f"Fehler: {e}")
-                    
-        if c2.button("📅 Wochenplan Zusammenfassung", key="btn_check_week"):
-            with st.spinner("Analysiere Woche..."):
-                req = [f"Gib mir eine kompakte Zusammenfassung des Trainings für die nächsten 7 Tage basierend auf:\n{st.session_state.trainingsplan}"] + st.session_state.doc_images
-                try:
-                    resp = client.models.generate_content(model='gemini-2.5-flash', contents=req)
-                    if resp.text: st.write(resp.text)
-                except Exception as e: st.error(f"Fehler: {e}")
-
+    # --- CHAT MIT COACH ---
     st.divider()
     st.subheader("💬 Chat mit Coach")
     for msg in st.session_state.messages:
