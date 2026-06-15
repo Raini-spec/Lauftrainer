@@ -1,54 +1,45 @@
 # ==============================================================================
 # 📦 BIBLIOTHEKEN LADEN (IMPORT-BEREICH)
 # ==============================================================================
-# Hier holen wir uns die Werkzeuge, die Python standardmäßig nicht mitbringt.
-import streamlit as st  # Das Framework für unsere gesamte Benutzeroberfläche (UI)
-import requests  # Ermöglicht das Senden von HTTP-Anfragen (wichtig für die Strava-API)
-from google import genai  # Das offizielle Google SDK, um mit der Gemini-KI zu sprechen
-import time  # Für Zeitverzögerungen und Zeitstempel-Berechnungen
-from datetime import datetime  # Um das aktuelle Datum und Uhrzeiten zu verarbeiten
-import PyPDF2  # Werkzeug, um hochgeladene PDF-Dateien auszulesen
-import extra_streamlit_components as stx  # Spezial-Erweiterung für den Cookie-Manager
-import json  # Erlaubt das Lesen und Schreiben von strukturierten Daten-Paketen
-from PIL import Image  # Bildverarbeitung (wichtig für hochgeladene Trainings-Grafiken)
-import os  # Betriebssystem-Schnittstelle (wurde für lokale Server-Dateien genutzt)
+import streamlit as st  # UI-Framework
+import requests  # HTTP-Anfragen für Strava
+from google import genai  # Gemini-KI SDK
+import time  # Zeitstempel & Verzögerungen
+from datetime import datetime  # Datumsverarbeitung
+import PyPDF2  # PDF-Reader
+import extra_streamlit_components as stx  # Cookie-Manager
+import json  # JSON-Verarbeitung
+from PIL import Image  # Bildverarbeitung
+import os  # Betriebssystem-Schnittstelle
 
 # --- INITIALISIERUNG DER SEITE ---
-# st.set_page_config MUSS immer der allererste Streamlit-Befehl im Code sein!
 st.set_page_config(page_title="KI Trainer", layout="centered")
 
 # --- COOKIE MANAGER STARTEN ---
-# Erstellt das Objekt, das auf die Festplatte des Nutzers zugreifen und Cookies lesen/schreiben kann.
 cookie_manager = stx.CookieManager()
-st.write("")  # Ein kleiner optischer Hack für einen sauberen Abstand ganz oben
+st.write("") 
 
 # --- TITELZEILEN ---
 st.title("🏃‍♂️🚴 KI Trainer: Strava & Gemini")
-st.caption("🔒 **Version 4.31** – Zeitanker 2026 & Dokumentierter Quellcode")
-
+st.caption("🔒 **Version 4.32** – Backup in Sidebar & Crash-Prävention")
 
 # ==============================================================================
 # 🧠 REKURSIVES GEDÄCHTNIS (STREAMLIT SESSION STATE)
 # ==============================================================================
-# Streamlit vergisst bei JEDEM Klick auf der Seite alle Variablen (Code läuft neu an).
-# Der 'session_state' ist das Kurzzeitgedächtnis, das Daten während der Sitzung behält.
-if "messages" not in st.session_state: st.session_state.messages = []  # Chat-Verlauf
-if "strava_context" not in st.session_state: st.session_state.strava_context = ""  # Formatierte Strava-Daten
-if "doc_names" not in st.session_state: st.session_state.doc_names = []  # Namen der Wissens-Dateien
-if "doc_texts" not in st.session_state: st.session_state.doc_texts = []  # Inhalte der Text-Dateien
-if "doc_images" not in st.session_state: st.session_state.doc_images = []  # Geladene Bilder
-
+if "messages" not in st.session_state: st.session_state.messages = []
+if "strava_context" not in st.session_state: st.session_state.strava_context = ""
+if "doc_names" not in st.session_state: st.session_state.doc_names = []
+if "doc_texts" not in st.session_state: st.session_state.doc_texts = []
+if "doc_images" not in st.session_state: st.session_state.doc_images = []
 
 # ==============================================================================
 # 🍪 LANGZEITGEDÄCHTNIS (COOKIE-LOGIK)
 # ==============================================================================
-# Wir holen uns die Daten, die permanent im Browser des Nutzers gespeichert sind.
 auth_cookie = cookie_manager.get("auth_paket")
 auth_data = {}
 if auth_cookie:
     try: auth_data = json.loads(auth_cookie) if isinstance(auth_cookie, str) else auth_cookie
     except: pass
-# Falls wir gerade im Setup-Prozess sind, überschreiben wir die Daten mit den temporären Werten
 if "temp_auth_data" in st.session_state: auth_data = st.session_state.temp_auth_data
 
 physio_cookie = cookie_manager.get("physio_paket")
@@ -58,7 +49,6 @@ if physio_cookie:
     except: pass
 
 # --- AUTOMATISCHES WIEDERHERSTELLEN AUS DEM BROWSER-SAFE ---
-# Falls der Server abstürzt, holen wir die Pläne lautlos aus diesem Cookie zurück
 app_backup_cookie = cookie_manager.get("app_backup_paket")
 if app_backup_cookie:
     try: 
@@ -72,33 +62,26 @@ if app_backup_cookie:
                 st.session_state.leistungsstatus = backup_data["leistungsstatus"]
     except: pass
 
-
 # ==============================================================================
 # ⚙️ HILFSFUNKTIONEN (WERKZEUGBOX)
 # ==============================================================================
-
-# --- ZENTRALE SPEICHER-FUNKTION ---
 def save_all_to_state_and_cookies(plan_text=None, woche_text=None, status_json=None):
-    """Speichert die Trainingspläne im Kurzzeitgedächtnis UND im permanenten Browser-Cookie."""
-    if plan_text: st.session_state.trainingsplan = plan_text
-    if woche_text: st.session_state.wochenplan = woche_text
-    if status_json: st.session_state.leistungsstatus = status_json
+    """Speichert die Pläne im Session State und schiebt sie ins Browser-Cookie."""
+    if plan_text is not None: st.session_state.trainingsplan = plan_text
+    if woche_text is not None: st.session_state.wochenplan = woche_text
+    if status_json is not None: st.session_state.leistungsstatus = status_json
     
     backup_paket = {
         "trainingsplan": st.session_state.get("trainingsplan", ""),
         "wochenplan": st.session_state.get("wochenplan", ""),
         "leistungsstatus": st.session_state.get("leistungsstatus", {})
     }
-    # Wir hängen einen Zeitstempel an den Key an, damit der Browser merkt, dass sich Daten geändert haben
     cookie_manager.set("app_backup_paket", json.dumps(backup_paket), key=f"set_backup_{int(time.time())}")
 
-# --- STRAVA TOKEN-TÜRSTEHER ---
 def get_valid_strava_token():
-    """Prüft, ob das Strava-Zugangstoken abgelaufen ist. Wenn ja, fordert es vollautomatisch ein neues an."""
+    """Prüft die Gültigkeit des Strava-Tokens und erneuert es bei Bedarf."""
     global auth_data
     expires_at = auth_data.get("expires_at")
-    
-    # Ein Strava-Token hält 6 Stunden. Wenn es in weniger als 5 Minuten (300 Sek) abläuft, erneuern wir es.
     if not expires_at or time.time() > (float(expires_at) - 300):
         with st.spinner("Erneuere Strava-Zugriff..."):
             url = "https://www.strava.com/oauth/token"
@@ -108,7 +91,7 @@ def get_valid_strava_token():
                 "refresh_token": auth_data.get("refresh_token"),
                 "grant_type": "refresh_token"
             }
-            res = requests.post(url, data=payload) # Sende die Daten per POST-Befehl an Strava
+            res = requests.post(url, data=payload)
             if res.status_code == 200:
                 data = res.json()
                 auth_data["access_token"] = data["access_token"]
@@ -119,13 +102,11 @@ def get_valid_strava_token():
             return None
     return auth_data.get("access_token")
 
-# --- DATA-MINING: STRAVA IMPORT ---
 def load_and_format_strava_data():
-    """Hiebt die letzten 30 Aktivitäten aus der Strava-API und übersetzt sie in Text für die KI."""
+    """Lädt die Strava-Aktivitäten und bereitet sie textuell auf."""
     strava_token = get_valid_strava_token()
     if not strava_token: return False
     try:
-        # GET-Anfrage an Strava. per_page=30 regelt die Anzahl der geladenen Einheiten
         response = requests.get(f"https://www.strava.com/api/v3/athlete/activities?per_page=30", headers={"Authorization": f"Bearer {strava_token}"})
         if response.status_code == 200:
             activities = response.json()
@@ -134,17 +115,15 @@ def load_and_format_strava_data():
                 last_three = []
                 for act in activities:
                     t = act.get('sport_type', act.get('type', 'Unbekannt'))
-                    d = act.get('distance', 0) / 1000  # Strava liefert Meter, wir rechnen in Kilometer um
-                    s = act.get('average_speed', 0)  # Geschwindigkeit in m/s
-                    date = act.get('start_date_local', '')[:10]  # Schneidet das Datum aus (YYYY-MM-DD)
+                    d = act.get('distance', 0) / 1000
+                    s = act.get('average_speed', 0)
+                    date = act.get('start_date_local', '')[:10]
                     p = act.get('average_heartrate', 'Kein Puls')
                     
                     t_de = "Lauf" if t in ["Run", "Lauf"] else ("Radfahren" if t in ["Ride", "Cycling"] else t)
-                    # Berechnung der berüchtigten Läufer-Pace (Minuten pro Kilometer) aus m/s
                     info = f"Pace: {(1000/s)/60:.2f} min/km" if t in ["Run", "Lauf"] and s > 0 else f"Geschw.: {s*3.6:.2f} km/h"
                     data += f"- [{date}] [{t}] {act.get('name')}: {d:.2f} km | {info} | Ø Puls: {p}\n"
                     
-                    # Extrahiere die Spitzen-3 für die Seitenleiste
                     if len(last_three) < 3:
                         try:
                             dt = datetime.strptime(date, "%Y-%m-%d")
@@ -155,7 +134,6 @@ def load_and_format_strava_data():
                 st.session_state.strava_context = data
                 st.session_state.last_three_activities = last_three
                 
-                # Wenn ein Leistungsstatus existiert, weben wir die 3 Aktivitäten direkt dort ein
                 if "leistungsstatus" in st.session_state:
                     st.session_state.leistungsstatus["letzte_aktivitaeten"] = last_three
                     save_all_to_state_and_cookies(status_json=st.session_state.leistungsstatus)
@@ -164,11 +142,9 @@ def load_and_format_strava_data():
         return False
     except: return False
 
-
 # ==============================================================================
-# 🎛️ COCKPIT LINKS (STREMLIT SIDEBAR)
+# 🎛️ COCKPIT LINKS (STREAMLIT SIDEBAR) - JETZT MIT BACKUP-STEUERUNG
 # ==============================================================================
-# Alles innerhalb von 'with st.sidebar:' wandert in das ausklappbare Seitenmenü.
 with st.sidebar:
     st.header("📊 Leistungszustand")
     if "leistungsstatus" in st.session_state and st.session_state.leistungsstatus:
@@ -181,7 +157,7 @@ with st.sidebar:
         st.markdown(f"• **21 km:** {status.get('prognose_21k', '---')}")
         st.markdown(f"🔥 **Belastung:**\n`{status.get('belastung', '---')}`")
     else:
-        st.info("Noch kein Leistungsstatus im Browser-Speicher.")
+        st.info("Kein aktiver Leistungsstatus im Speicher.")
         
     st.divider()
     st.header("👟 Letzte Aktivitäten")
@@ -190,8 +166,36 @@ with st.sidebar:
     elif "last_three_activities" in st.session_state:
         for act in st.session_state.last_three_activities: st.write(act)
         
+    # --- NEU: BACKUP & CO. EXKLUSIV IN DER SIDEBAR ---
     st.divider()
-    # Der rote Panik-Button: Löscht radikal alle Cookies und leert den Session State
+    st.header("💾 Daten-Backup Center")
+    with st.expander("📥 Export / 1-Klick Sichern", expanded=False):
+        current_backup = {
+            "trainingsplan": st.session_state.get("trainingsplan", ""),
+            "wochenplan": st.session_state.get("wochenplan", ""),
+            "leistungsstatus": st.session_state.get("leistungsstatus", {})
+        }
+        st.download_button("💾 Backup-Datei laden", data=json.dumps(current_backup, indent=2, ensure_ascii=False), file_name="trainer_backup.json", mime="application/json", key="side_btn_export")
+    
+    with st.expander("📤 Import / Wiederherstellen", expanded=False):
+        uploaded_backup = st.file_uploader("Backup-Datei wählen", type=["json"], key="side_upload_backup")
+        if st.button("🔄 Zustand einspielen", key="side_btn_import"):
+            if uploaded_backup:
+                try:
+                    b_content = json.load(uploaded_backup)
+                    save_all_to_state_and_cookies(
+                        plan_text=b_content.get("trainingsplan", ""), 
+                        woche_text=b_content.get("wochenplan", ""), 
+                        status_json=b_content.get("leistungsstatus", {})
+                    )
+                    st.success("Erfolgreich geladen!")
+                    time.sleep(0.5)
+                    st.rerun()
+                except Exception as e: st.error(f"Fehler: {e}")
+            else:
+                st.warning("Bitte erst eine Datei wählen.")
+
+    st.divider()
     if st.sidebar.button("⚠️ Lokale Daten löschen", key="btn_clear_device_data"):
         cookie_manager.delete("auth_paket")
         cookie_manager.delete("physio_paket")
@@ -199,13 +203,11 @@ with st.sidebar:
         for key in ["messages", "strava_context", "doc_names", "doc_texts", "doc_images", "temp_auth_data", "trainingsplan", "wochenplan", "leistungsstatus", "last_three_activities"]:
             if key in st.session_state: del st.session_state[key]
         time.sleep(0.5)
-        st.rerun() # Zwingt Streamlit zu einem sofortigen, sauberen Neu-Zeichnen der Seite
-
+        st.rerun()
 
 # ==============================================================================
 # 🔑 SCHLEUSE (LOGIN ODER HAUPT-APP)
 # ==============================================================================
-# Hier wird entschieden: Sieht der Nutzer das Login-Menü oder die eigentliche App?
 gemini_key = auth_data.get("gemini_key")
 access_token = auth_data.get("access_token")
 trainer_instructions = physio_data.get("instructions", "")
@@ -264,32 +266,9 @@ if not gemini_key or not access_token:
 # 🏃‍♂️ HAUPT-APP BEREICH (NUR FÜR EINGELOGGTE NUTZER)
 # ==============================================================================
 else:
-    # Wir wecken das Google GenAI Client-Modul auf und übergeben deinen Schlüssel
     client = genai.Client(api_key=gemini_key)
     if "temp_auth_data" in st.session_state:
         cookie_manager.set("auth_paket", json.dumps(st.session_state.temp_auth_data), key="cookie_set_main_auth")
-
-    # --- DATEN-BACKUP MENÜ (EXPENDER) ---
-    with st.expander("💾 App-Daten sichern & wiederherstellen (Gegen Server-Reset)"):
-        st.caption("Falls der Server deine Pläne gelöscht hat, kannst du hier dein Backup einspielen oder den aktuellen Stand sichern.")
-        c_exp, c_imp = st.columns(2)
-        with c_exp:
-            current_backup = {
-                "trainingsplan": st.session_state.get("trainingsplan", ""),
-                "wochenplan": st.session_state.get("wochenplan", ""),
-                "leistungsstatus": st.session_state.get("leistungsstatus", {})
-            }
-            st.download_button("📥 Backup-Datei herunterladen", data=json.dumps(current_backup, indent=2, ensure_ascii=False), file_name="trainer_backup.json", mime="application/json")
-        with c_imp:
-            uploaded_backup = st.file_uploader("📤 Backup-Datei hochladen", type=["json"], key="upload_backup_file")
-            if st.button("🔄 Daten aus Datei wiederherstellen", key="btn_trigger_import"):
-                if uploaded_backup:
-                    try:
-                        b_content = json.load(uploaded_backup)
-                        save_all_to_state_and_cookies(b_content.get("trainingsplan"), b_content.get("wochenplan"), b_content.get("leistungsstatus"))
-                        st.success("Backup erfolgreich geladen!")
-                        st.rerun()
-                    except Exception as e: st.error(f"Fehler beim Laden: {e}")
 
     # --- TRAINER-INSTRUCTION MENÜ ---
     with st.expander("🧠 Trainer-Instruktionen"):
@@ -303,7 +282,7 @@ else:
     with st.expander("📊 Physiologische Werte"):
         col_v, col_l, col_b = st.columns(3)
         with col_v: new_vo2max = st.text_input("VO2max Basis", value=vo2max, key="input_vo2max")
-        with col_l: new_laktat = st.text_input("Laktatschwelle", value=laktat, key="input_laktat")
+        with col_l: new_laktat = st.text_input("Laktatschwelle", value=laktatschwelle, key="input_laktat")
         with col_b: new_belastung = st.text_input("Fokus-Belastung", value=belastung, key="input_belastung")
         if st.button("💾 Werte speichern", key="btn_save_physio"):
             physio_data.update({"vo2max": new_vo2max, "laktat": new_laktat, "belastung": new_belastung})
@@ -343,19 +322,14 @@ else:
         else:
             st.info("Kein langfristiger Masterplan vorhanden. Generiere zuerst deinen großen Masterplan.")
 
-
     # ==============================================================================
     # 💥 DIE KI-STEUERZENTRALE (BUTTONS & PROMPTS)
     # ==============================================================================
     st.divider()
     st.subheader("🗓️ Trainingspläne & Status steuern")
     
-    # --- DYNAMISCHER ZEITANKER ---
-    # Hier liest Python das EXAKTE heutige Datum deines Systems aus (z.B. Montag, 15. Juni 2026)
     heute_iso = datetime.now().strftime("%A, %d. %B %Y")
     
-    # Diesen Textblock weben wir jetzt in JEDE KI-Anfrage ein. Es ist der absolute Befehl,
-    # dass die KI nicht in der Vergangenheit herumgeistern darf.
     zeit_befehl = f"""
     ⚠️ WICHTIGER SYSTEM-ZEITANKER:
     Heute ist exakt der {heute_iso}. Wir befinden uns im Jahr 2026!
@@ -370,10 +344,8 @@ else:
         if st.button("✨ Großen Masterplan initial erstellen (lädt Strava-Daten)", key="btn_new_plan"):
             with st.spinner("Lade aktuelle Strava-Daten und erstelle langfristigen Masterplan..."):
                 if load_and_format_strava_data():
-                    # Wir bündeln den Zeitbefehl mit dem echten Prompt
                     prompt = f"{zeit_befehl}\n\nErstelle einen neuen langfristigen Masterplan bis zum Marathon am 05.07.2026.\nHistorie:\n{st.session_state.strava_context}\nInstruktionen: {trainer_instructions}\n"
                     try:
-                        # Hier feuern wir den Befehl über das SDK ab und warten auf die Antwort (resp.text)
                         resp = client.models.generate_content(model='gemini-2.5-flash', contents=[prompt] + st.session_state.doc_images)
                         if resp.text:
                             save_all_to_state_and_cookies(plan_text=resp.text)
@@ -387,7 +359,6 @@ else:
             if st.button("📅 Wochenplan & Status aktualisieren (lädt Strava-Daten)", key="btn_update_woche"):
                 with st.spinner("Hole Strava-Daten und berechne adaptiven Wochenplan..."):
                     if load_and_format_strava_data():
-                        # Der mächtige "Alles-In-Einem"-Prompt mit dem eingebauten Zeitanker
                         prompt = f"""
                         {zeit_befehl}
                         
@@ -426,7 +397,6 @@ else:
                         try:
                             resp = client.models.generate_content(model='gemini-2.5-flash', contents=[prompt] + st.session_state.doc_images)
                             text = resp.text
-                            # Die App zerschneidet den Text der KI anhand der definierten Trenn-Marker (Split)
                             if "===STATUS_START===" in text and "===WOCHENPLAN_START===" in text:
                                 status_part = text.split("===STATUS_START===")[1].split("===STATUS_END===")[0].strip()
                                 woche_part = text.split("===WOCHENPLAN_START===")[1].split("===WOCHENPLAN_END===")[0].strip()
@@ -456,23 +426,19 @@ else:
                                 st.rerun()
                         except Exception as e: st.error(f"Fehler: {e}")
 
-
     # ==============================================================================
     # 💬 CHAT-INTERFAZ (COACH TALK)
     # ==============================================================================
     st.divider()
     st.subheader("💬 Chat mit Coach")
-    # Zeige alle bisherigen Nachrichten aus der Session-Historie auf dem Bildschirm an
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]): st.markdown(msg["content"])
 
-    # st.chat_input erstellt die Eingabezeile am unteren Bildschirmrand
     if user_input := st.chat_input("Nachricht an den Coach..."):
         st.session_state.messages.append({"role": "user", "content": user_input})
         with st.chat_message("user"): st.markdown(user_input)
         with st.chat_message("assistant"):
             with st.spinner("Tippt..."):
-                # Auch im Chat bekommt der Coach vorab den Zeitanker umgehängt
                 prompt = f"{zeit_befehl}\n\nDu bist Coach. Plan:\n{st.session_state.get('wochenplan', st.session_state.get('trainingsplan'))}\nDaten:\n{st.session_state.strava_context}\nFrage: {user_input}"
                 try:
                     resp = client.models.generate_content(model='gemini-2.5-flash', contents=[prompt] + st.session_state.doc_images)
