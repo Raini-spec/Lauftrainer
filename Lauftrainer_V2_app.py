@@ -21,7 +21,7 @@ st.write("")
 
 # --- TITELZEILEN ---
 st.title("🏃‍♂️🚴 KI Trainer: Strava & Gemini")
-st.caption("🔒 **Version 4.50** – Heute-Widget & Visueller Belastungsbalken")
+st.caption("🔒 **Version 4.60** – Dynamisches Sidebar-Menü & Echtes Ampelsystem")
 
 # ==============================================================================
 # 🧠 REKURSIVES GEDÄCHTNIS (STREAMLIT SESSION STATE)
@@ -142,7 +142,7 @@ def load_and_format_strava_data():
     except: return False
 
 # ==============================================================================
-# 🎛️ COCKPIT LINKS (STREAMLIT SIDEBAR)
+# 🎛️ COCKPIT LINKS (STREAMLIT SIDEBAR) - JETZT DAS ERSTELLTE DASHBOARD
 # ==============================================================================
 with st.sidebar:
     st.header("📊 Leistungszustand")
@@ -156,12 +156,24 @@ with st.sidebar:
         st.markdown(f"• **10 km:** {status.get('prognose_10k', '---')}")
         st.markdown(f"• **21 km:** {status.get('prognose_21k', '---')}")
         
-        # --- NEU: VISUELLER FORTSCHRITTSBALKEN FÜR BELASTUNG ---
+        # --- NEU: ECHTES AMPELSYSTEM (DYNAMISCHES HTML-STYLING) ---
         st.write("")
         st.markdown("**🔥 Akute Belastung:**")
-        belastung_wert = status.get("belastung_prozent", 20)  # Standard: 20%
-        st.progress(int(belastung_wert) / 100)
-        st.caption(f"Status: *{status.get('belastung', 'Niedrig')}*")
+        belastung_text = status.get('belastung', 'Niedrig')
+        belastung_prozent = int(status.get("belastung_prozent", 20))
+        
+        # Bestimme die Farbe basierend auf dem Prozentwert (Ampelsystem)
+        if belastung_prozent < 45: color_code = "#2ecc71"  # Grün (Niedrig/Optimal)
+        elif belastung_prozent < 75: color_code = "#f1c40f"  # Gelb (Aufpassen)
+        else: color_code = "#e74c3c"  # Rot (Überlastungsgefahr)
+        
+        # Wir bauen einen eigenen Fortschrittsbalken per HTML, da Streamlit-eigene Farben starr rot sind
+        st.markdown(f"""
+            <div style="width: 100%; background-color: #f0f2f6; border-radius: 4px; height: 8px; margin-bottom: 4px;">
+                <div style="width: {belastung_prozent}%; background-color: {color_code}; height: 8px; border-radius: 4px;"></div>
+            </div>
+            <span style="font-size: 0.85rem; color: #555;">Status: <i>{belastung_text} ({belastung_prozent}%)</i></span>
+        """, unsafe_html=True)
     else:
         st.info("Kein aktiver Leistungsstatus im Speicher.")
         
@@ -172,33 +184,20 @@ with st.sidebar:
     elif "last_three_activities" in st.session_state:
         for act in st.session_state.last_three_activities: st.write(act)
         
+    # --- NEU: DAS FÜNF-PUNKTE NAVIGATIONS-MENÜ ---
     st.divider()
-    st.header("💾 Daten-Backup Center")
-    with st.expander("📥 Export / 1-Klick Sichern", expanded=False):
-        current_backup = {
-            "trainingsplan": st.session_state.get("trainingsplan", ""),
-            "wochenplan": st.session_state.get("wochenplan", ""),
-            "leistungsstatus": st.session_state.get("leistungsstatus", {}),
-            "heute_training": st.session_state.get("heute_training", "")
-        }
-        st.download_button("💾 Backup-Datei laden", data=json.dumps(current_backup, indent=2, ensure_ascii=False), file_name="trainer_backup.json", mime="application/json", key="side_btn_export")
-    
-    with st.expander("📤 Import / Wiederherstellen", expanded=False):
-        uploaded_backup = st.file_uploader("Backup-Datei wählen", type=["json"], key="side_upload_backup")
-        if st.button("🔄 Zustand einspielen", key="side_btn_import"):
-            if uploaded_backup:
-                try:
-                    b_content = json.load(uploaded_backup)
-                    save_all_to_state_and_cookies(
-                        plan_text=b_content.get("trainingsplan", ""), 
-                        woche_text=b_content.get("wochenplan", ""), 
-                        status_json=b_content.get("leistungsstatus", {}),
-                        heute_text=b_content.get("heute_training", "")
-                    )
-                    st.success("Erfolgreich geladen!")
-                    time.sleep(0.5)
-                    st.rerun()
-                except Exception as e: st.error(f"Fehler: {e}")
+    st.header("⚙️ Ansicht & Einstellungen")
+    ansicht = st.radio(
+        "Gehe zu:",
+        [
+            "📅 Mein Trainings-Dashboard", 
+            "🧠 Trainer-Instruktionen", 
+            "📊 Physiologische Werte", 
+            "📄 Hintergrundwissen (Dateien)", 
+            "💾 Daten-Backup Center"
+        ],
+        key="navigation_menu"
+    )
 
     st.divider()
     if st.sidebar.button("⚠️ Lokale Daten löschen", key="btn_clear_device_data"):
@@ -268,29 +267,49 @@ if not gemini_key or not access_token:
                 st.rerun()
 
 # ==============================================================================
-# 🏃‍♂️ HAUPT-APP BEREICH (NUR FÜR EINGELOGGTE NUTZER)
+# 🏃‍♂️ HAUPT-APP BEREICH (DYNAMISCH GESTEUERT DURCH NAVI LINKS)
 # ==============================================================================
 else:
     client = genai.Client(api_key=gemini_key)
     if "temp_auth_data" in st.session_state:
         cookie_manager.set("auth_paket", json.dumps(st.session_state.temp_auth_data), key="cookie_set_main_auth")
 
-    # --- NEU: DAS HEUTE-WIDGET (SOFORT-FOKUS GANZ OBEN) ---
-    if st.session_state.get("heute_training"):
-        st.info(f"🎯 **HEUTE AUF DEM PLAN:**\n\n{st.session_state.heute_training}")
-        st.write("")
+    # --- DATEN-DASHBOARD ANZEIGEN (STANDARD-ANSICHT) ---
+    if ansicht == "📅 Mein Trainings-Dashboard":
+        if st.session_state.get("heute_training"):
+            st.info(f"🎯 **HEUTE AUF DEM PLAN:**\n\n{st.session_state.heute_training}")
+            st.write("")
 
-    with st.expander("🧠 Trainer-Instruktionen"):
-        new_instructions = st.text_area("Anweisungen", value=trainer_instructions, height=150, key="input_instructions")
+        st.subheader("📅 Aktueller Wochenplan")
+        if st.session_state.get("wochenplan"):
+            st.markdown(st.session_state.wochenplan)
+            st.download_button("📥 Wochenplan speichern (.md)", data=st.session_state.wochenplan, file_name="wochenplan.md", mime="text/markdown", key="dl_wp")
+        else:
+            st.info("Kein Wochenplan vorhanden. Klicke unten auf 'Wochenplan & Status aktualisieren'!")
+
+        st.write("")
+        st.subheader("🏆 Langfristiger Masterplan")
+        if st.session_state.get("trainingsplan"):
+            with st.expander("Vollständigen Masterplan einsehen", expanded=False):
+                st.markdown(st.session_state.trainingsplan)
+                st.download_button("📥 Masterplan (.md)", data=st.session_state.trainingsplan, file_name="trainingsplan.md", mime="text/markdown", key="dl_mp_md")
+        else:
+            st.info("Kein langfristiger Masterplan vorhanden. Generiere zuerst deinen großen Masterplan.")
+
+    # --- TRAINER-INSTRUCTION MENÜ ---
+    elif ansicht == "🧠 Trainer-Instruktionen":
+        st.subheader("🧠 Trainer-Instruktionen")
+        new_instructions = st.text_area("Anweisungen für die KI (Ziele, Fokus, Einschränkungen)", value=trainer_instructions, height=300, key="input_instructions")
         if st.button("💾 Speichern", key="btn_save_instructions"):
             physio_data["instructions"] = new_instructions
             cookie_manager.set("physio_paket", json.dumps(physio_data), key="cookie_set_instructions")
             st.success("Gespeichert!")
 
-    with st.expander("📊 Physiologische Werte"):
+    # --- PHYSIO MENÜ ---
+    elif ansicht == "📊 Physiologische Werte":
+        st.subheader("📊 Physiologische Werte")
         col_v, col_l, col_b = st.columns(3)
-        # Wenn ein VO2max-Wert manuell eingegeben wird, nutzt die KI diesen als Anker
-        with col_v: new_vo2max = st.text_input("VO2max Basis (z.B. Garmin/Labor)", value=vo2max, key="input_vo2max")
+        with col_v: new_vo2max = st.text_input("VO2max Basis", value=vo2max, key="input_vo2max")
         with col_l: new_laktat = st.text_input("Laktatschwelle", value=laktatschwelle, key="input_laktat")
         with col_b: new_belastung = st.text_input("Fokus-Belastung", value=belastung, key="input_belastung")
         if st.button("💾 Werte speichern", key="btn_save_physio"):
@@ -298,7 +317,9 @@ else:
             cookie_manager.set("physio_paket", json.dumps(physio_data), key="cookie_set_physio_values")
             st.success("Gespeichert!")
 
-    with st.expander("📄 Hintergrundwissen (Dateien) verwalten"):
+    # --- DATEI MANAGER ---
+    elif ansicht == "📄 Hintergrundwissen (Dateien)":
+        st.subheader("📄 Hintergrundwissen (Dateien) verwalten")
         uploaded_files = st.file_uploader("Dateien hochladen", type=["txt", "md", "pdf", "png", "jpg", "jpeg"], accept_multiple_files=True, key="upload_knowledge_files")
         st.session_state.doc_names, st.session_state.doc_texts, st.session_state.doc_images = [], [], []
         if uploaded_files:
@@ -313,24 +334,38 @@ else:
                 else: st.session_state.doc_texts.append(f.read().decode("utf-8"))
             st.success(f"Geladen: {len(st.session_state.doc_names)} Dateien.")
 
-    with st.expander("📅 Aktueller Wochenplan", expanded=bool(st.session_state.get("wochenplan"))):
-        if st.session_state.get("wochenplan"):
-            st.markdown(st.session_state.wochenplan)
-            st.divider()
-            st.download_button("📥 Wochenplan speichern (.md)", data=st.session_state.wochenplan, file_name="wochenplan.md", mime="text/markdown", key="dl_wp")
-        else:
-            st.info("Kein Wochenplan vorhanden. Klicke unten auf 'Wochenplan & Status aktualisieren'!")
-
-    with st.expander("🏆 Langfristiger Masterplan", expanded=False):
-        if st.session_state.get("trainingsplan"):
-            st.markdown(st.session_state.trainingsplan)
-            st.divider()
-            st.download_button("📥 Masterplan (.md)", data=st.session_state.trainingsplan, file_name="trainingsplan.md", mime="text/markdown", key="dl_mp_md")
-        else:
-            st.info("Kein langfristiger Masterplan vorhanden. Generiere zuerst deinen großen Masterplan.")
+    # --- DATA-BACKUP MENÜ ---
+    elif ansicht == "💾 Daten-Backup Center":
+        st.subheader("💾 Daten-Backup Center")
+        st.caption("Falls der Server deine Pläne gelöscht hat, kannst du hier dein Backup einspielen oder den aktuellen Stand sichern.")
+        c_exp, c_imp = st.columns(2)
+        with c_exp:
+            current_backup = {
+                "trainingsplan": st.session_state.get("trainingsplan", ""),
+                "wochenplan": st.session_state.get("wochenplan", ""),
+                "leistungsstatus": st.session_state.get("leistungsstatus", {}),
+                "heute_training": st.session_state.get("heute_training", "")
+            }
+            st.download_button("📥 Backup-Datei herunterladen", data=json.dumps(current_backup, indent=2, ensure_ascii=False), file_name="trainer_backup.json", mime="application/json", key="main_btn_export")
+        with c_imp:
+            uploaded_backup = st.file_uploader("📤 Backup-Datei hochladen", type=["json"], key="main_upload_backup_file")
+            if st.button("🔄 Daten aus Datei wiederherstellen", key="btn_trigger_import"):
+                if uploaded_backup:
+                    try:
+                        b_content = json.load(uploaded_backup)
+                        save_all_to_state_and_cookies(
+                            plan_text=b_content.get("trainingsplan", ""), 
+                            woche_text=b_content.get("wochenplan", ""), 
+                            status_json=b_content.get("leistungsstatus", {}),
+                            heute_text=b_content.get("heute_training", "")
+                        )
+                        st.success("Backup erfolgreich geladen!")
+                        time.sleep(0.5)
+                        st.rerun()
+                    except Exception as e: st.error(f"Fehler beim Laden: {e}")
 
     # ==============================================================================
-    # 💥 DIE KI-STEUERZENTRALE (BUTTONS & PROMPTS)
+    # 💥 DIE KI-STEUERZENTRALE (ALWAYS VISIBLE AM UNTEREN ENDE)
     # ==============================================================================
     st.divider()
     st.subheader("🗓️ Trainingspläne & Status steuern")
