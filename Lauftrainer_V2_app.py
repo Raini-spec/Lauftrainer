@@ -21,7 +21,7 @@ st.write("")
 
 # --- TITELZEILEN ---
 st.title("🏃‍♂️🚴 KI Trainer: Strava & Gemini")
-st.caption("🔒 **Version 4.60** – Dynamisches Sidebar-Menü & Echtes Ampelsystem")
+st.caption("🔒 **Version 4.70** – Button-Navigation & Optimierte Seitenleiste")
 
 # ==============================================================================
 # 🧠 REKURSIVES GEDÄCHTNIS (STREAMLIT SESSION STATE)
@@ -31,6 +31,7 @@ if "strava_context" not in st.session_state: st.session_state.strava_context = "
 if "doc_names" not in st.session_state: st.session_state.doc_names = []
 if "doc_texts" not in st.session_state: st.session_state.doc_texts = []
 if "doc_images" not in st.session_state: st.session_state.doc_images = []
+if "ansicht" not in st.session_state: st.session_state.ansicht = "📅 Mein Trainings-Dashboard"
 
 # ==============================================================================
 # 🍪 LANGZEITGEDÄCHTNIS (COOKIE-LOGIK)
@@ -142,9 +143,20 @@ def load_and_format_strava_data():
     except: return False
 
 # ==============================================================================
-# 🎛️ COCKPIT LINKS (STREAMLIT SIDEBAR) - JETZT DAS ERSTELLTE DASHBOARD
+# 🎛️ COCKPIT LINKS (STREAMLIT SIDEBAR)
 # ==============================================================================
 with st.sidebar:
+    # --- 1. NEU: BUTTON-NAVIGATION GANZ OBEN ---
+    st.header("🧭 Navigation")
+    if st.button("📅 Trainings-Dashboard", use_container_width=True): st.session_state.ansicht = "📅 Mein Trainings-Dashboard"
+    if st.button("🧠 Trainer-Instruktionen", use_container_width=True): st.session_state.ansicht = "🧠 Trainer-Instruktionen"
+    if st.button("📊 Physiologische Werte", use_container_width=True): st.session_state.ansicht = "📊 Physiologische Werte"
+    if st.button("📄 Hintergrundwissen", use_container_width=True): st.session_state.ansicht = "📄 Hintergrundwissen (Dateien)"
+    if st.button("💾 Daten-Backup Center", use_container_width=True): st.session_state.ansicht = "💾 Daten-Backup Center"
+
+    st.divider()
+
+    # --- 2. LEISTUNGSZUSTAND & AMPEL ---
     st.header("📊 Leistungszustand")
     if "leistungsstatus" in st.session_state and st.session_state.leistungsstatus:
         status = st.session_state.leistungsstatus
@@ -156,18 +168,15 @@ with st.sidebar:
         st.markdown(f"• **10 km:** {status.get('prognose_10k', '---')}")
         st.markdown(f"• **21 km:** {status.get('prognose_21k', '---')}")
         
-        # --- NEU: ECHTES AMPELSYSTEM (DYNAMISCHES HTML-STYLING) ---
         st.write("")
         st.markdown("**🔥 Akute Belastung:**")
         belastung_text = status.get('belastung', 'Niedrig')
         belastung_prozent = int(status.get("belastung_prozent", 20))
         
-        # Bestimme die Farbe basierend auf dem Prozentwert (Ampelsystem)
-        if belastung_prozent < 45: color_code = "#2ecc71"  # Grün (Niedrig/Optimal)
-        elif belastung_prozent < 75: color_code = "#f1c40f"  # Gelb (Aufpassen)
-        else: color_code = "#e74c3c"  # Rot (Überlastungsgefahr)
+        if belastung_prozent < 45: color_code = "#2ecc71"  # Grün
+        elif belastung_prozent < 75: color_code = "#f1c40f"  # Gelb
+        else: color_code = "#e74c3c"  # Rot
         
-        # Wir bauen einen eigenen Fortschrittsbalken per HTML, da Streamlit-eigene Farben starr rot sind
         st.markdown(f"""
             <div style="width: 100%; background-color: #f0f2f6; border-radius: 4px; height: 8px; margin-bottom: 4px;">
                 <div style="width: {belastung_prozent}%; background-color: {color_code}; height: 8px; border-radius: 4px;"></div>
@@ -178,33 +187,20 @@ with st.sidebar:
         st.info("Kein aktiver Leistungsstatus im Speicher.")
         
     st.divider()
+    
+    # --- 3. LETZTE AKTIVITÄTEN ---
     st.header("👟 Letzte Aktivitäten")
     if "leistungsstatus" in st.session_state and st.session_state.leistungsstatus and st.session_state.leistungsstatus.get("letzte_aktivitaeten"):
         for act in st.session_state.leistungsstatus.get("letzte_aktivitaeten"): st.write(act)
     elif "last_three_activities" in st.session_state:
         for act in st.session_state.last_three_activities: st.write(act)
-        
-    # --- NEU: DAS FÜNF-PUNKTE NAVIGATIONS-MENÜ ---
-    st.divider()
-    st.header("⚙️ Ansicht & Einstellungen")
-    ansicht = st.radio(
-        "Gehe zu:",
-        [
-            "📅 Mein Trainings-Dashboard", 
-            "🧠 Trainer-Instruktionen", 
-            "📊 Physiologische Werte", 
-            "📄 Hintergrundwissen (Dateien)", 
-            "💾 Daten-Backup Center"
-        ],
-        key="navigation_menu"
-    )
 
     st.divider()
-    if st.sidebar.button("⚠️ Lokale Daten löschen", key="btn_clear_device_data"):
+    if st.button("⚠️ Lokale Daten löschen", use_container_width=True, type="primary"):
         cookie_manager.delete("auth_paket")
         cookie_manager.delete("physio_paket")
         cookie_manager.delete("app_backup_paket")
-        for key in ["messages", "strava_context", "doc_names", "doc_texts", "doc_images", "temp_auth_data", "trainingsplan", "wochenplan", "leistungsstatus", "last_three_activities", "heute_training"]:
+        for key in ["messages", "strava_context", "doc_names", "doc_texts", "doc_images", "temp_auth_data", "trainingsplan", "wochenplan", "leistungsstatus", "last_three_activities", "heute_training", "ansicht"]:
             if key in st.session_state: del st.session_state[key]
         time.sleep(0.5)
         st.rerun()
@@ -275,7 +271,7 @@ else:
         cookie_manager.set("auth_paket", json.dumps(st.session_state.temp_auth_data), key="cookie_set_main_auth")
 
     # --- DATEN-DASHBOARD ANZEIGEN (STANDARD-ANSICHT) ---
-    if ansicht == "📅 Mein Trainings-Dashboard":
+    if st.session_state.ansicht == "📅 Mein Trainings-Dashboard":
         if st.session_state.get("heute_training"):
             st.info(f"🎯 **HEUTE AUF DEM PLAN:**\n\n{st.session_state.heute_training}")
             st.write("")
@@ -297,7 +293,7 @@ else:
             st.info("Kein langfristiger Masterplan vorhanden. Generiere zuerst deinen großen Masterplan.")
 
     # --- TRAINER-INSTRUCTION MENÜ ---
-    elif ansicht == "🧠 Trainer-Instruktionen":
+    elif st.session_state.ansicht == "🧠 Trainer-Instruktionen":
         st.subheader("🧠 Trainer-Instruktionen")
         new_instructions = st.text_area("Anweisungen für die KI (Ziele, Fokus, Einschränkungen)", value=trainer_instructions, height=300, key="input_instructions")
         if st.button("💾 Speichern", key="btn_save_instructions"):
@@ -306,7 +302,7 @@ else:
             st.success("Gespeichert!")
 
     # --- PHYSIO MENÜ ---
-    elif ansicht == "📊 Physiologische Werte":
+    elif st.session_state.ansicht == "📊 Physiologische Werte":
         st.subheader("📊 Physiologische Werte")
         col_v, col_l, col_b = st.columns(3)
         with col_v: new_vo2max = st.text_input("VO2max Basis", value=vo2max, key="input_vo2max")
@@ -318,7 +314,7 @@ else:
             st.success("Gespeichert!")
 
     # --- DATEI MANAGER ---
-    elif ansicht == "📄 Hintergrundwissen (Dateien)":
+    elif st.session_state.ansicht == "📄 Hintergrundwissen (Dateien)":
         st.subheader("📄 Hintergrundwissen (Dateien) verwalten")
         uploaded_files = st.file_uploader("Dateien hochladen", type=["txt", "md", "pdf", "png", "jpg", "jpeg"], accept_multiple_files=True, key="upload_knowledge_files")
         st.session_state.doc_names, st.session_state.doc_texts, st.session_state.doc_images = [], [], []
@@ -335,7 +331,7 @@ else:
             st.success(f"Geladen: {len(st.session_state.doc_names)} Dateien.")
 
     # --- DATA-BACKUP MENÜ ---
-    elif ansicht == "💾 Daten-Backup Center":
+    elif st.session_state.ansicht == "💾 Daten-Backup Center":
         st.subheader("💾 Daten-Backup Center")
         st.caption("Falls der Server deine Pläne gelöscht hat, kannst du hier dein Backup einspielen oder den aktuellen Stand sichern.")
         c_exp, c_imp = st.columns(2)
