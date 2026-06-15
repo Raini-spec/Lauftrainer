@@ -21,7 +21,7 @@ st.write("")
 
 # --- TITELZEILEN ---
 st.title("🏃‍♂️🚴 KI Trainer: Strava & Gemini")
-st.caption("🔒 **Version 4.40** – Bugfix (Rerun-Abbruch) & Dynamische Wettkampf-Ziele")
+st.caption("🔒 **Version 4.50** – Heute-Widget & Visueller Belastungsbalken")
 
 # ==============================================================================
 # 🧠 REKURSIVES GEDÄCHTNIS (STREAMLIT SESSION STATE)
@@ -60,20 +60,24 @@ if app_backup_cookie:
                 st.session_state.wochenplan = backup_data["wochenplan"]
             if "leistungsstatus" not in st.session_state and backup_data.get("leistungsstatus"):
                 st.session_state.leistungsstatus = backup_data["leistungsstatus"]
+            if "heute_training" not in st.session_state and backup_data.get("heute_training"):
+                st.session_state.heute_training = backup_data["heute_training"]
     except: pass
 
 # ==============================================================================
 # ⚙️ HILFSFUNKTIONEN (WERKZEUGBOX)
 # ==============================================================================
-def save_all_to_state_and_cookies(plan_text=None, woche_text=None, status_json=None):
+def save_all_to_state_and_cookies(plan_text=None, woche_text=None, status_json=None, heute_text=None):
     if plan_text is not None: st.session_state.trainingsplan = plan_text
     if woche_text is not None: st.session_state.wochenplan = woche_text
     if status_json is not None: st.session_state.leistungsstatus = status_json
+    if heute_text is not None: st.session_state.heute_training = heute_text
     
     backup_paket = {
         "trainingsplan": st.session_state.get("trainingsplan", ""),
         "wochenplan": st.session_state.get("wochenplan", ""),
-        "leistungsstatus": st.session_state.get("leistungsstatus", {})
+        "leistungsstatus": st.session_state.get("leistungsstatus", {}),
+        "heute_training": st.session_state.get("heute_training", "")
     }
     cookie_manager.set("app_backup_paket", json.dumps(backup_paket), key=f"set_backup_{int(time.time())}")
 
@@ -130,8 +134,6 @@ def load_and_format_strava_data():
                         
                 st.session_state.strava_context = data
                 st.session_state.last_three_activities = last_three
-                
-                # BUGFIX: Hier wurde der Cookie-Manager entfernt, der das Neuladen (Abbruch) verursacht hat
                 if "leistungsstatus" in st.session_state:
                     st.session_state.leistungsstatus["letzte_aktivitaeten"] = last_three
                 return True
@@ -148,11 +150,18 @@ with st.sidebar:
         status = st.session_state.leistungsstatus
         st.caption(f"Letztes Update: {status.get('letztes_update', '---')}")
         st.metric("Geschätzter VO2max", f"⚡ {status.get('vo2max', '---')}")
+        
         st.markdown("**🎯 Laufprognosen:**")
         st.markdown(f"• **5 km:** {status.get('prognose_5k', '---')}")
         st.markdown(f"• **10 km:** {status.get('prognose_10k', '---')}")
         st.markdown(f"• **21 km:** {status.get('prognose_21k', '---')}")
-        st.markdown(f"🔥 **Belastung:**\n`{status.get('belastung', '---')}`")
+        
+        # --- NEU: VISUELLER FORTSCHRITTSBALKEN FÜR BELASTUNG ---
+        st.write("")
+        st.markdown("**🔥 Akute Belastung:**")
+        belastung_wert = status.get("belastung_prozent", 20)  # Standard: 20%
+        st.progress(int(belastung_wert) / 100)
+        st.caption(f"Status: *{status.get('belastung', 'Niedrig')}*")
     else:
         st.info("Kein aktiver Leistungsstatus im Speicher.")
         
@@ -169,7 +178,8 @@ with st.sidebar:
         current_backup = {
             "trainingsplan": st.session_state.get("trainingsplan", ""),
             "wochenplan": st.session_state.get("wochenplan", ""),
-            "leistungsstatus": st.session_state.get("leistungsstatus", {})
+            "leistungsstatus": st.session_state.get("leistungsstatus", {}),
+            "heute_training": st.session_state.get("heute_training", "")
         }
         st.download_button("💾 Backup-Datei laden", data=json.dumps(current_backup, indent=2, ensure_ascii=False), file_name="trainer_backup.json", mime="application/json", key="side_btn_export")
     
@@ -182,7 +192,8 @@ with st.sidebar:
                     save_all_to_state_and_cookies(
                         plan_text=b_content.get("trainingsplan", ""), 
                         woche_text=b_content.get("wochenplan", ""), 
-                        status_json=b_content.get("leistungsstatus", {})
+                        status_json=b_content.get("leistungsstatus", {}),
+                        heute_text=b_content.get("heute_training", "")
                     )
                     st.success("Erfolgreich geladen!")
                     time.sleep(0.5)
@@ -194,7 +205,7 @@ with st.sidebar:
         cookie_manager.delete("auth_paket")
         cookie_manager.delete("physio_paket")
         cookie_manager.delete("app_backup_paket")
-        for key in ["messages", "strava_context", "doc_names", "doc_texts", "doc_images", "temp_auth_data", "trainingsplan", "wochenplan", "leistungsstatus", "last_three_activities"]:
+        for key in ["messages", "strava_context", "doc_names", "doc_texts", "doc_images", "temp_auth_data", "trainingsplan", "wochenplan", "leistungsstatus", "last_three_activities", "heute_training"]:
             if key in st.session_state: del st.session_state[key]
         time.sleep(0.5)
         st.rerun()
@@ -264,6 +275,11 @@ else:
     if "temp_auth_data" in st.session_state:
         cookie_manager.set("auth_paket", json.dumps(st.session_state.temp_auth_data), key="cookie_set_main_auth")
 
+    # --- NEU: DAS HEUTE-WIDGET (SOFORT-FOKUS GANZ OBEN) ---
+    if st.session_state.get("heute_training"):
+        st.info(f"🎯 **HEUTE AUF DEM PLAN:**\n\n{st.session_state.heute_training}")
+        st.write("")
+
     with st.expander("🧠 Trainer-Instruktionen"):
         new_instructions = st.text_area("Anweisungen", value=trainer_instructions, height=150, key="input_instructions")
         if st.button("💾 Speichern", key="btn_save_instructions"):
@@ -273,7 +289,8 @@ else:
 
     with st.expander("📊 Physiologische Werte"):
         col_v, col_l, col_b = st.columns(3)
-        with col_v: new_vo2max = st.text_input("VO2max Basis", value=vo2max, key="input_vo2max")
+        # Wenn ein VO2max-Wert manuell eingegeben wird, nutzt die KI diesen als Anker
+        with col_v: new_vo2max = st.text_input("VO2max Basis (z.B. Garmin/Labor)", value=vo2max, key="input_vo2max")
         with col_l: new_laktat = st.text_input("Laktatschwelle", value=laktatschwelle, key="input_laktat")
         with col_b: new_belastung = st.text_input("Fokus-Belastung", value=belastung, key="input_belastung")
         if st.button("💾 Werte speichern", key="btn_save_physio"):
@@ -320,7 +337,6 @@ else:
     
     heute_iso = datetime.now().strftime("%A, %d. %B %Y")
     
-    # BUGFIX: Das feste Marathon-Datum wurde entfernt. Die KI beachtet nun ausschließlich deine Trainer-Instruktionen!
     zeit_befehl = f"""
     ⚠️ WICHTIGER SYSTEM-ZEITANKER:
     Heute ist exakt der {heute_iso}. Wir befinden uns im Jahr 2026!
@@ -361,11 +377,12 @@ else:
                         Instruktionen:
                         {trainer_instructions}
                         
-                        Physiologische Werte: VO2max: {vo2max}, Laktat: {laktatschwelle}, Belastung: {belastung}
+                        Physiologische Werte: VO2max Anker (falls gesetzt): {vo2max}, Laktat: {laktatschwelle}, Belastung: {belastung}
                         
                         AUFGABE:
-                        1. Erstelle einen adaptiven Wochenplan für den Rest DIESER aktuellen Woche (basierend auf dem heutigen Stand: {heute_iso}). Passe ihn intelligent an, falls zusätzliche Aktivitäten (Radtouren) erfolgten oder Einheiten verändert wurden.
-                        2. Berechne den Leistungszustand: Schätze den VO2max (Zahl), gib präzise Laufprognosen für 5 km, 10 km, 21 km und bewerte die akute Belastung.
+                        1. Erstelle einen adaptiven Wochenplan für den Rest DIESER aktuellen Woche (basierend auf dem heutigen Stand: {heute_iso}).
+                        2. Extrahiere NUR die heutige Trainingseinheit (für den {heute_iso}) in Kurzform.
+                        3. Berechne den Leistungszustand: Schätze den VO2max (bevorzuge den VO2max Anker falls ausgefüllt), gib präzise Laufprognosen für 5 km, 10 km, 21 km und bewerte die akute Belastung (als Text UND als Zahl von 0 bis 100).
                         
                         ANTWORT-FORMAT (STRENG EINHALTEN):
                         ===STATUS_START===
@@ -374,9 +391,14 @@ else:
                           "prognose_5k": "Zeit (z.B. 21:40 min)",
                           "prognose_10k": "Zeit (z.B. 45:15 min)",
                           "prognose_21k": "Zeit (z.B. 1:40:30 std)",
-                          "belastung": "Kurzer Statustext"
+                          "belastung": "Kurzer Statustext (z.B. Niedrig)",
+                          "belastung_prozent": "Zahl zwischen 0 und 100 (z.B. 25)"
                         }}
                         ===STATUS_END===
+                        
+                        ===HEUTE_START===
+                        Hier steht nur die heutige Einheit in 1-2 prägnanten Sätzen.
+                        ===HEUTE_END===
                         
                         ===WOCHENPLAN_START===
                         ### 📅 Dein adaptiver Wochenplan (Restwoche)
@@ -386,8 +408,9 @@ else:
                         try:
                             resp = client.models.generate_content(model='gemini-2.5-flash', contents=[prompt] + st.session_state.doc_images)
                             text = resp.text
-                            if "===STATUS_START===" in text and "===WOCHENPLAN_START===" in text:
+                            if "===STATUS_START===" in text and "===WOCHENPLAN_START===" in text and "===HEUTE_START===" in text:
                                 status_part = text.split("===STATUS_START===")[1].split("===STATUS_END===")[0].strip()
+                                heute_part = text.split("===HEUTE_START===")[1].split("===HEUTE_END===")[0].strip()
                                 woche_part = text.split("===WOCHENPLAN_START===")[1].split("===WOCHENPLAN_END===")[0].strip()
                                 
                                 s_json = {}
@@ -397,8 +420,8 @@ else:
                                     s_json["letztes_update"] = datetime.now().strftime("%d.%m.%Y")
                                 except: pass
                                     
-                                save_all_to_state_and_cookies(woche_text=woche_part, status_json=s_json)
-                                st.success("Wochenplan & Leistungsstatus erfolgreich aktualisiert!")
+                                save_all_to_state_and_cookies(woche_text=woche_part, status_json=s_json, heute_text=heute_part)
+                                st.success("Wochenplan & Heute-Widget erfolgreich aktualisiert!")
                                 st.rerun()
                         except Exception as e: st.error(f"Fehler: {e}")
         
@@ -415,9 +438,9 @@ else:
                                 st.rerun()
                         except Exception as e: st.error(f"Fehler: {e}")
 
-    # ==============================================================================
-    # 💬 CHAT-INTERFAZ (COACH TALK)
-    # ==============================================================================
+# ==============================================================================
+# 💬 CHAT-INTERFAZ (COACH TALK)
+# ==============================================================================
     st.divider()
     st.subheader("💬 Chat mit Coach")
     for msg in st.session_state.messages:
