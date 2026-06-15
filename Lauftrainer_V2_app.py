@@ -21,7 +21,7 @@ st.write("")
 
 # --- TITELZEILEN ---
 st.title("🏃‍♂️🚴 KI Trainer: Strava & Gemini")
-st.caption("🔒 **Version 4.70** – Button-Navigation & Optimierte Seitenleiste")
+st.caption("🔒 **Version 4.80** – Bugfix (Ampel) & All-in-One Masterplan-Updates")
 
 # ==============================================================================
 # 🧠 REKURSIVES GEDÄCHTNIS (STREAMLIT SESSION STATE)
@@ -146,7 +146,6 @@ def load_and_format_strava_data():
 # 🎛️ COCKPIT LINKS (STREAMLIT SIDEBAR)
 # ==============================================================================
 with st.sidebar:
-    # --- 1. NEU: BUTTON-NAVIGATION GANZ OBEN ---
     st.header("🧭 Navigation")
     if st.button("📅 Trainings-Dashboard", use_container_width=True): st.session_state.ansicht = "📅 Mein Trainings-Dashboard"
     if st.button("🧠 Trainer-Instruktionen", use_container_width=True): st.session_state.ansicht = "🧠 Trainer-Instruktionen"
@@ -156,7 +155,6 @@ with st.sidebar:
 
     st.divider()
 
-    # --- 2. LEISTUNGSZUSTAND & AMPEL ---
     st.header("📊 Leistungszustand")
     if "leistungsstatus" in st.session_state and st.session_state.leistungsstatus:
         status = st.session_state.leistungsstatus
@@ -171,24 +169,30 @@ with st.sidebar:
         st.write("")
         st.markdown("**🔥 Akute Belastung:**")
         belastung_text = status.get('belastung', 'Niedrig')
-        belastung_prozent = int(status.get("belastung_prozent", 20))
+        
+        # BUGFIX: Sicheres Auslesen des Prozentwerts (verhindert Abstürze, falls KI "20%" ausgibt)
+        raw_b = status.get("belastung_prozent", 20)
+        try:
+            if isinstance(raw_b, str): raw_b = raw_b.replace("%", "").strip()
+            belastung_prozent = int(float(raw_b))
+        except:
+            belastung_prozent = 20
         
         if belastung_prozent < 45: color_code = "#2ecc71"  # Grün
         elif belastung_prozent < 75: color_code = "#f1c40f"  # Gelb
         else: color_code = "#e74c3c"  # Rot
         
+        # BUGFIX: unsafe_allow_html=True statt unsafe_html
         st.markdown(f"""
             <div style="width: 100%; background-color: #f0f2f6; border-radius: 4px; height: 8px; margin-bottom: 4px;">
                 <div style="width: {belastung_prozent}%; background-color: {color_code}; height: 8px; border-radius: 4px;"></div>
             </div>
             <span style="font-size: 0.85rem; color: #555;">Status: <i>{belastung_text} ({belastung_prozent}%)</i></span>
-        """, unsafe_html=True)
+        """, unsafe_allow_html=True)
     else:
         st.info("Kein aktiver Leistungsstatus im Speicher.")
         
     st.divider()
-    
-    # --- 3. LETZTE AKTIVITÄTEN ---
     st.header("👟 Letzte Aktivitäten")
     if "leistungsstatus" in st.session_state and st.session_state.leistungsstatus and st.session_state.leistungsstatus.get("letzte_aktivitaeten"):
         for act in st.session_state.leistungsstatus.get("letzte_aktivitaeten"): st.write(act)
@@ -377,17 +381,72 @@ else:
     Berücksichtige als Wettkampfdatum ausschließlich das Datum, das in den Instruktionen steht!
     """
 
+    # --- ZENTRALES FORMAT FÜR ALLE UPDATES ---
+    output_format_alle = """
+    ANTWORT-FORMAT (STRENG EINHALTEN):
+    ===STATUS_START===
+    {
+      "vo2max": "Zahl (z.B. 51.2)",
+      "prognose_5k": "Zeit (z.B. 21:40 min)",
+      "prognose_10k": "Zeit (z.B. 45:15 min)",
+      "prognose_21k": "Zeit (z.B. 1:40:30 std)",
+      "belastung": "Kurzer Statustext (z.B. Niedrig)",
+      "belastung_prozent": "Zahl zwischen 0 und 100 (ohne %-Zeichen, z.B. 25)"
+    }
+    ===STATUS_END===
+    
+    ===HEUTE_START===
+    Hier steht nur die heutige Einheit in 1-2 prägnanten Sätzen.
+    ===HEUTE_END===
+    
+    ===WOCHENPLAN_START===
+    ### 📅 Dein adaptiver Wochenplan (Restwoche)
+    *Hier folgt der strukturierte Wochenplan im Markdown-Format...*
+    ===WOCHENPLAN_END===
+    """
+
     if not st.session_state.get("trainingsplan"):
         if st.button("✨ Großen Masterplan initial erstellen", key="btn_new_plan"):
-            with st.spinner("Lade aktuelle Strava-Daten und erstelle langfristigen Masterplan..."):
+            with st.spinner("Lade aktuelle Strava-Daten und erstelle alle Pläne..."):
                 if load_and_format_strava_data():
-                    prompt = f"{zeit_befehl}\n\nErstelle einen neuen langfristigen Masterplan.\nHistorie:\n{st.session_state.strava_context}\nInstruktionen: {trainer_instructions}\n"
+                    prompt = f"""
+                    {zeit_befehl}
+                    Erstelle einen neuen langfristigen Masterplan.
+                    Historie: {st.session_state.strava_context}
+                    Instruktionen: {trainer_instructions}
+                    
+                    AUFGABE:
+                    1. Erstelle den großen Masterplan.
+                    2. Erstelle passend dazu den Wochenplan für den Rest DIESER Woche.
+                    3. Extrahiere die heutige Einheit.
+                    4. Berechne den Leistungszustand.
+                    
+                    {output_format_alle}
+                    
+                    ===MASTERPLAN_START===
+                    ### 🏆 Dein Langfristiger Masterplan
+                    *Hier folgt der große Masterplan...*
+                    ===MASTERPLAN_END===
+                    """
                     try:
                         resp = client.models.generate_content(model='gemini-2.5-flash', contents=[prompt] + st.session_state.doc_images)
-                        if resp.text:
-                            save_all_to_state_and_cookies(plan_text=resp.text)
-                            st.success("Masterplan erfolgreich erstellt!")
-                            st.rerun()
+                        text = resp.text
+                        
+                        master_part = text.split("===MASTERPLAN_START===")[1].split("===MASTERPLAN_END===")[0].strip() if "===MASTERPLAN_START===" in text else text
+                        woche_part = text.split("===WOCHENPLAN_START===")[1].split("===WOCHENPLAN_END===")[0].strip() if "===WOCHENPLAN_START===" in text else ""
+                        heute_part = text.split("===HEUTE_START===")[1].split("===HEUTE_END===")[0].strip() if "===HEUTE_START===" in text else ""
+                        status_part = text.split("===STATUS_START===")[1].split("===STATUS_END===")[0].strip() if "===STATUS_START===" in text else "{}"
+                        
+                        s_json = {}
+                        try:
+                            s_json = json.loads(status_part)
+                            s_json["letzte_aktivitaeten"] = st.session_state.get("last_three_activities", [])
+                            s_json["letztes_update"] = datetime.now().strftime("%d.%m.%Y")
+                        except: pass
+                        
+                        save_all_to_state_and_cookies(plan_text=master_part, woche_text=woche_part, status_json=s_json, heute_text=heute_part)
+                        st.success("Masterplan & Wochenplan erfolgreich erstellt!")
+                        st.rerun()
                     except Exception as e: st.error(f"Fehler: {e}")
     else:
         c_wp, c_mp = st.columns(2)
@@ -397,44 +456,16 @@ else:
                     if load_and_format_strava_data():
                         prompt = f"""
                         {zeit_befehl}
-                        
-                        Du bist der persönliche KI-Laufcoach des Athleten.
-                        Hier ist der aktuelle langfristige Masterplan:
-                        {st.session_state.trainingsplan}
-                        
-                        Hier sind die neuesten Strava-Trainingsdaten:
-                        {st.session_state.strava_context}
-                        
-                        Instruktionen:
-                        {trainer_instructions}
-                        
-                        Physiologische Werte: VO2max Anker (falls gesetzt): {vo2max}, Laktat: {laktatschwelle}, Belastung: {belastung}
+                        Hier ist der aktuelle Masterplan:\n{st.session_state.trainingsplan}
+                        Hier sind die neuesten Strava-Daten:\n{st.session_state.strava_context}
+                        Instruktionen:\n{trainer_instructions}
                         
                         AUFGABE:
-                        1. Erstelle einen adaptiven Wochenplan für den Rest DIESER aktuellen Woche (basierend auf dem heutigen Stand: {heute_iso}).
-                        2. Extrahiere NUR die heutige Trainingseinheit (für den {heute_iso}) in Kurzform.
-                        3. Berechne den Leistungszustand: Schätze den VO2max (bevorzuge den VO2max Anker falls ausgefüllt), gib präzise Laufprognosen für 5 km, 10 km, 21 km und bewerte die akute Belastung (als Text UND als Zahl von 0 bis 100).
+                        1. Erstelle einen adaptiven Wochenplan für den Rest DIESER aktuellen Woche (basierend auf {heute_iso}).
+                        2. Extrahiere NUR die heutige Trainingseinheit.
+                        3. Berechne den Leistungszustand.
                         
-                        ANTWORT-FORMAT (STRENG EINHALTEN):
-                        ===STATUS_START===
-                        {{
-                          "vo2max": "Zahl (z.B. 51.2)",
-                          "prognose_5k": "Zeit (z.B. 21:40 min)",
-                          "prognose_10k": "Zeit (z.B. 45:15 min)",
-                          "prognose_21k": "Zeit (z.B. 1:40:30 std)",
-                          "belastung": "Kurzer Statustext (z.B. Niedrig)",
-                          "belastung_prozent": "Zahl zwischen 0 und 100 (z.B. 25)"
-                        }}
-                        ===STATUS_END===
-                        
-                        ===HEUTE_START===
-                        Hier steht nur die heutige Einheit in 1-2 prägnanten Sätzen.
-                        ===HEUTE_END===
-                        
-                        ===WOCHENPLAN_START===
-                        ### 📅 Dein adaptiver Wochenplan (Restwoche)
-                        *Hier folgt der strukturierte Wochenplan im Markdown-Format...*
-                        ===WOCHENPLAN_END===
+                        {output_format_alle}
                         """
                         try:
                             resp = client.models.generate_content(model='gemini-2.5-flash', contents=[prompt] + st.session_state.doc_images)
@@ -458,15 +489,46 @@ else:
         
         with c_mp:
             if st.button("🏆 Masterplan aktualisieren", key="btn_update_master"):
-                with st.spinner("Hole Strava-Daten und aktualisiere großen Masterplan..."):
+                with st.spinner("Hole Strava-Daten und aktualisiere alle Pläne..."):
                     if load_and_format_strava_data():
-                        prompt = f"{zeit_befehl}\n\nHier ist mein alter Masterplan:\n{st.session_state.trainingsplan}\n\nHier sind neue Trainingsdaten:\n{st.session_state.strava_context}\n\nInstruktionen:\n{trainer_instructions}\n\nSchreibe den großen Masterplan intelligent neu."
+                        prompt = f"""
+                        {zeit_befehl}
+                        Hier ist mein alter Masterplan:\n{st.session_state.trainingsplan}
+                        Hier sind neue Trainingsdaten:\n{st.session_state.strava_context}
+                        Instruktionen:\n{trainer_instructions}
+                        
+                        AUFGABE:
+                        1. Schreibe den großen Masterplan intelligent neu.
+                        2. Erstelle passend dazu den adaptiven Wochenplan für den Rest DIESER Woche.
+                        3. Extrahiere die heutige Einheit.
+                        4. Berechne den Leistungszustand.
+                        
+                        {output_format_alle}
+                        
+                        ===MASTERPLAN_START===
+                        ### 🏆 Dein Langfristiger Masterplan
+                        *Hier folgt der große Masterplan...*
+                        ===MASTERPLAN_END===
+                        """
                         try:
                             resp = client.models.generate_content(model='gemini-2.5-flash', contents=[prompt] + st.session_state.doc_images)
-                            if resp.text:
-                                save_all_to_state_and_cookies(plan_text=resp.text)
-                                st.success("Langfristiger Masterplan erfolgreich aktualisiert!")
-                                st.rerun()
+                            text = resp.text
+                            
+                            master_part = text.split("===MASTERPLAN_START===")[1].split("===MASTERPLAN_END===")[0].strip() if "===MASTERPLAN_START===" in text else st.session_state.get("trainingsplan", "")
+                            woche_part = text.split("===WOCHENPLAN_START===")[1].split("===WOCHENPLAN_END===")[0].strip() if "===WOCHENPLAN_START===" in text else st.session_state.get("wochenplan", "")
+                            heute_part = text.split("===HEUTE_START===")[1].split("===HEUTE_END===")[0].strip() if "===HEUTE_START===" in text else st.session_state.get("heute_training", "")
+                            status_part = text.split("===STATUS_START===")[1].split("===STATUS_END===")[0].strip() if "===STATUS_START===" in text else "{}"
+                            
+                            s_json = {}
+                            try:
+                                s_json = json.loads(status_part)
+                                s_json["letzte_aktivitaeten"] = st.session_state.get("last_three_activities", [])
+                                s_json["letztes_update"] = datetime.now().strftime("%d.%m.%Y")
+                            except: pass
+                            
+                            save_all_to_state_and_cookies(plan_text=master_part, woche_text=woche_part, status_json=s_json, heute_text=heute_part)
+                            st.success("Masterplan, Wochenplan & Status erfolgreich aktualisiert!")
+                            st.rerun()
                         except Exception as e: st.error(f"Fehler: {e}")
 
 # ==============================================================================
