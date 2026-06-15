@@ -1,16 +1,16 @@
 # ==============================================================================
 # 📦 BIBLIOTHEKEN LADEN (IMPORT-BEREICH)
 # ==============================================================================
-import streamlit as st  # UI-Framework
-import requests  # HTTP-Anfragen für Strava
-from google import genai  # Gemini-KI SDK
-import time  # Zeitstempel & Verzögerungen
-from datetime import datetime  # Datumsverarbeitung
-import PyPDF2  # PDF-Reader
-import extra_streamlit_components as stx  # Cookie-Manager
-import json  # JSON-Verarbeitung
-from PIL import Image  # Bildverarbeitung
-import os  # Betriebssystem-Schnittstelle
+import streamlit as st 
+import requests 
+from google import genai 
+import time 
+from datetime import datetime 
+import PyPDF2 
+import extra_streamlit_components as stx 
+import json 
+from PIL import Image 
+import os 
 
 # --- INITIALISIERUNG DER SEITE ---
 st.set_page_config(page_title="KI Trainer", layout="centered")
@@ -21,7 +21,7 @@ st.write("")
 
 # --- TITELZEILEN ---
 st.title("🏃‍♂️🚴 KI Trainer: Strava & Gemini")
-st.caption("🔒 **Version 4.32** – Backup in Sidebar & Crash-Prävention")
+st.caption("🔒 **Version 4.40** – Bugfix (Rerun-Abbruch) & Dynamische Wettkampf-Ziele")
 
 # ==============================================================================
 # 🧠 REKURSIVES GEDÄCHTNIS (STREAMLIT SESSION STATE)
@@ -66,7 +66,6 @@ if app_backup_cookie:
 # ⚙️ HILFSFUNKTIONEN (WERKZEUGBOX)
 # ==============================================================================
 def save_all_to_state_and_cookies(plan_text=None, woche_text=None, status_json=None):
-    """Speichert die Pläne im Session State und schiebt sie ins Browser-Cookie."""
     if plan_text is not None: st.session_state.trainingsplan = plan_text
     if woche_text is not None: st.session_state.wochenplan = woche_text
     if status_json is not None: st.session_state.leistungsstatus = status_json
@@ -79,7 +78,6 @@ def save_all_to_state_and_cookies(plan_text=None, woche_text=None, status_json=N
     cookie_manager.set("app_backup_paket", json.dumps(backup_paket), key=f"set_backup_{int(time.time())}")
 
 def get_valid_strava_token():
-    """Prüft die Gültigkeit des Strava-Tokens und erneuert es bei Bedarf."""
     global auth_data
     expires_at = auth_data.get("expires_at")
     if not expires_at or time.time() > (float(expires_at) - 300):
@@ -103,7 +101,6 @@ def get_valid_strava_token():
     return auth_data.get("access_token")
 
 def load_and_format_strava_data():
-    """Lädt die Strava-Aktivitäten und bereitet sie textuell auf."""
     strava_token = get_valid_strava_token()
     if not strava_token: return False
     try:
@@ -134,16 +131,16 @@ def load_and_format_strava_data():
                 st.session_state.strava_context = data
                 st.session_state.last_three_activities = last_three
                 
+                # BUGFIX: Hier wurde der Cookie-Manager entfernt, der das Neuladen (Abbruch) verursacht hat
                 if "leistungsstatus" in st.session_state:
                     st.session_state.leistungsstatus["letzte_aktivitaeten"] = last_three
-                    save_all_to_state_and_cookies(status_json=st.session_state.leistungsstatus)
                 return True
             return False
         return False
     except: return False
 
 # ==============================================================================
-# 🎛️ COCKPIT LINKS (STREAMLIT SIDEBAR) - JETZT MIT BACKUP-STEUERUNG
+# 🎛️ COCKPIT LINKS (STREAMLIT SIDEBAR)
 # ==============================================================================
 with st.sidebar:
     st.header("📊 Leistungszustand")
@@ -166,7 +163,6 @@ with st.sidebar:
     elif "last_three_activities" in st.session_state:
         for act in st.session_state.last_three_activities: st.write(act)
         
-    # --- NEU: BACKUP & CO. EXKLUSIV IN DER SIDEBAR ---
     st.divider()
     st.header("💾 Daten-Backup Center")
     with st.expander("📥 Export / 1-Klick Sichern", expanded=False):
@@ -192,8 +188,6 @@ with st.sidebar:
                     time.sleep(0.5)
                     st.rerun()
                 except Exception as e: st.error(f"Fehler: {e}")
-            else:
-                st.warning("Bitte erst eine Datei wählen.")
 
     st.divider()
     if st.sidebar.button("⚠️ Lokale Daten löschen", key="btn_clear_device_data"):
@@ -270,7 +264,6 @@ else:
     if "temp_auth_data" in st.session_state:
         cookie_manager.set("auth_paket", json.dumps(st.session_state.temp_auth_data), key="cookie_set_main_auth")
 
-    # --- TRAINER-INSTRUCTION MENÜ ---
     with st.expander("🧠 Trainer-Instruktionen"):
         new_instructions = st.text_area("Anweisungen", value=trainer_instructions, height=150, key="input_instructions")
         if st.button("💾 Speichern", key="btn_save_instructions"):
@@ -278,7 +271,6 @@ else:
             cookie_manager.set("physio_paket", json.dumps(physio_data), key="cookie_set_instructions")
             st.success("Gespeichert!")
 
-    # --- PHYSIO MENÜ ---
     with st.expander("📊 Physiologische Werte"):
         col_v, col_l, col_b = st.columns(3)
         with col_v: new_vo2max = st.text_input("VO2max Basis", value=vo2max, key="input_vo2max")
@@ -289,7 +281,6 @@ else:
             cookie_manager.set("physio_paket", json.dumps(physio_data), key="cookie_set_physio_values")
             st.success("Gespeichert!")
 
-    # --- DATEI MANAGER ---
     with st.expander("📄 Hintergrundwissen (Dateien) verwalten"):
         uploaded_files = st.file_uploader("Dateien hochladen", type=["txt", "md", "pdf", "png", "jpg", "jpeg"], accept_multiple_files=True, key="upload_knowledge_files")
         st.session_state.doc_names, st.session_state.doc_texts, st.session_state.doc_images = [], [], []
@@ -305,7 +296,6 @@ else:
                 else: st.session_state.doc_texts.append(f.read().decode("utf-8"))
             st.success(f"Geladen: {len(st.session_state.doc_names)} Dateien.")
 
-    # --- ANZEIGE DER ERGEBNISSE ---
     with st.expander("📅 Aktueller Wochenplan", expanded=bool(st.session_state.get("wochenplan"))):
         if st.session_state.get("wochenplan"):
             st.markdown(st.session_state.wochenplan)
@@ -330,21 +320,21 @@ else:
     
     heute_iso = datetime.now().strftime("%A, %d. %B %Y")
     
+    # BUGFIX: Das feste Marathon-Datum wurde entfernt. Die KI beachtet nun ausschließlich deine Trainer-Instruktionen!
     zeit_befehl = f"""
     ⚠️ WICHTIGER SYSTEM-ZEITANKER:
     Heute ist exakt der {heute_iso}. Wir befinden uns im Jahr 2026!
     Jedes Strava-Training mit einem Datum aus 2026 ist brandaktuell.
-    Der Marathon-Wettkampf ist am Sonntag, den 05.07.2026 – also in wenigen Wochen!
-    Rechne alle Pläne und Tapering-Wochen penibel von diesem heutigen Datum ({heute_iso}) rückwärts oder vorwärts. 
+    Rechne alle Pläne penibel von diesem heutigen Datum ({heute_iso}) in die Zukunft. 
     Behandle das aktuelle Jahr NIEMALS als 2024 oder ein anderes Jahr.
+    Berücksichtige als Wettkampfdatum ausschließlich das Datum, das in den Instruktionen steht!
     """
 
-    # --- KNOPF A: INITIALER MASTERPLAN ---
     if not st.session_state.get("trainingsplan"):
-        if st.button("✨ Großen Masterplan initial erstellen (lädt Strava-Daten)", key="btn_new_plan"):
+        if st.button("✨ Großen Masterplan initial erstellen", key="btn_new_plan"):
             with st.spinner("Lade aktuelle Strava-Daten und erstelle langfristigen Masterplan..."):
                 if load_and_format_strava_data():
-                    prompt = f"{zeit_befehl}\n\nErstelle einen neuen langfristigen Masterplan bis zum Marathon am 05.07.2026.\nHistorie:\n{st.session_state.strava_context}\nInstruktionen: {trainer_instructions}\n"
+                    prompt = f"{zeit_befehl}\n\nErstelle einen neuen langfristigen Masterplan.\nHistorie:\n{st.session_state.strava_context}\nInstruktionen: {trainer_instructions}\n"
                     try:
                         resp = client.models.generate_content(model='gemini-2.5-flash', contents=[prompt] + st.session_state.doc_images)
                         if resp.text:
@@ -353,10 +343,9 @@ else:
                             st.rerun()
                     except Exception as e: st.error(f"Fehler: {e}")
     else:
-        # --- KNOPF B & C: DIE UPDATES ---
         c_wp, c_mp = st.columns(2)
         with c_wp:
-            if st.button("📅 Wochenplan & Status aktualisieren (lädt Strava-Daten)", key="btn_update_woche"):
+            if st.button("📅 Wochenplan & Status aktualisieren", key="btn_update_woche"):
                 with st.spinner("Hole Strava-Daten und berechne adaptiven Wochenplan..."):
                     if load_and_format_strava_data():
                         prompt = f"""
@@ -414,10 +403,10 @@ else:
                         except Exception as e: st.error(f"Fehler: {e}")
         
         with c_mp:
-            if st.button("🏆 Masterplan aktualisieren (lädt Strava-Daten)", key="btn_update_master"):
+            if st.button("🏆 Masterplan aktualisieren", key="btn_update_master"):
                 with st.spinner("Hole Strava-Daten und aktualisiere großen Masterplan..."):
                     if load_and_format_strava_data():
-                        prompt = f"{zeit_befehl}\n\nHier ist mein alter Masterplan:\n{st.session_state.trainingsplan}\n\nHier sind neue Trainingsdaten:\n{st.session_state.strava_context}\n\nInstruktionen:\n{trainer_instructions}\n\nSchreibe den großen Masterplan intelligent bis zum 05.07.2026 neu."
+                        prompt = f"{zeit_befehl}\n\nHier ist mein alter Masterplan:\n{st.session_state.trainingsplan}\n\nHier sind neue Trainingsdaten:\n{st.session_state.strava_context}\n\nInstruktionen:\n{trainer_instructions}\n\nSchreibe den großen Masterplan intelligent neu."
                         try:
                             resp = client.models.generate_content(model='gemini-2.5-flash', contents=[prompt] + st.session_state.doc_images)
                             if resp.text:
