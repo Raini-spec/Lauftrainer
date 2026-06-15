@@ -16,7 +16,7 @@ cookie_manager = stx.CookieManager()
 st.write("") 
 
 st.title("🏃‍♂️🚴 KI Trainer: Strava & Gemini")
-st.caption("🔒 **Version 4.90** – Clean UI, Morgen-Widget & 10er-Historie")
+st.caption("🔒 **Version 4.91** – Direkter Download-Button & Physio-Erklärtext")
 
 # ==============================================================================
 # 🧠 SESSION STATE & COOKIES
@@ -124,8 +124,17 @@ with st.sidebar:
     if st.button("🏆 Masterplan", use_container_width=True): st.session_state.ansicht = "Masterplan"
     if st.button("👟 Letzte Aktivitäten", use_container_width=True): st.session_state.ansicht = "Aktivitäten"
     if st.button("⚙️ Trainerinstruktionen & Co.", use_container_width=True): st.session_state.ansicht = "Einstellungen"
-    if st.button("💾 Daten sichern", use_container_width=True): st.session_state.ansicht = "Sichern"
     if st.button("📂 Daten wiederherstellen", use_container_width=True): st.session_state.ansicht = "Wiederherstellen"
+    
+    # NEU: Direkter Download-Button statt Navigation zur Unterseite
+    backup = {
+        "trainingsplan": st.session_state.get("trainingsplan", ""), 
+        "wochenplan": st.session_state.get("wochenplan", ""), 
+        "leistungsstatus": st.session_state.get("leistungsstatus", {}), 
+        "heute_training": st.session_state.get("heute_training", ""), 
+        "morgen_training": st.session_state.get("morgen_training", "")
+    }
+    st.download_button("💾 Daten sichern (Export)", data=json.dumps(backup, indent=2), file_name="trainer_backup.json", mime="application/json", use_container_width=True)
 
     st.divider()
 
@@ -279,6 +288,10 @@ else:
     elif st.session_state.ansicht == "Einstellungen":
         st.header("⚙️ Trainerinstruktionen & Physiologie")
         new_inst = st.text_area("Anweisungen für die KI", value=trainer_instructions, height=200)
+        
+        # NEU: Erklärtext für die physiologischen Werte
+        st.write("ℹ️ *Hier können aktuelle physiologische Werte, sofern bekannt, eingetragen werden. Falls diese nicht eingetragen werden, werden diese automatisch berechnet.*")
+        
         c_v, c_l, c_b = st.columns(3)
         with c_v: new_v = st.text_input("VO2max", value=physio_data.get("vo2max", ""))
         with c_l: new_l = st.text_input("Laktat", value=physio_data.get("laktat", ""))
@@ -291,12 +304,6 @@ else:
         st.subheader("📄 Hintergrundwissen (Dateien)")
         uploaded_files = st.file_uploader("Lade PDFs, Bilder oder Texte hoch", accept_multiple_files=True)
         if uploaded_files: st.success("Dateien im temporären Speicher abgelegt.")
-
-    # --- ANSICHT: SICHERN ---
-    elif st.session_state.ansicht == "Sichern":
-        st.header("💾 Daten sichern (Export)")
-        backup = {"trainingsplan": st.session_state.get("trainingsplan", ""), "wochenplan": st.session_state.get("wochenplan", ""), "leistungsstatus": st.session_state.get("leistungsstatus", {}), "heute_training": st.session_state.get("heute_training", ""), "morgen_training": st.session_state.get("morgen_training", "")}
-        st.download_button("📥 Backup-Datei (.json) herunterladen", data=json.dumps(backup, indent=2), file_name="trainer_backup.json", mime="application/json")
 
     # --- ANSICHT: WIEDERHERSTELLEN ---
     elif st.session_state.ansicht == "Wiederherstellen":
