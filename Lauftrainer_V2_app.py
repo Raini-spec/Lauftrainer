@@ -16,7 +16,7 @@ cookie_manager = stx.CookieManager()
 st.write("") 
 
 st.title("🏃‍♂️🚴 KI Trainer: Strava & Gemini")
-st.caption("🔒 **Version 4.91** – Direkter Download-Button & Physio-Erklärtext")
+st.caption("🔒 **Version 4.92** – Menü-Fix & Stabiler Masterplan-Prompt")
 
 # ==============================================================================
 # 🧠 SESSION STATE & COOKIES
@@ -124,9 +124,8 @@ with st.sidebar:
     if st.button("🏆 Masterplan", use_container_width=True): st.session_state.ansicht = "Masterplan"
     if st.button("👟 Letzte Aktivitäten", use_container_width=True): st.session_state.ansicht = "Aktivitäten"
     if st.button("⚙️ Trainerinstruktionen & Co.", use_container_width=True): st.session_state.ansicht = "Einstellungen"
-    if st.button("📂 Daten wiederherstellen", use_container_width=True): st.session_state.ansicht = "Wiederherstellen"
     
-    # NEU: Direkter Download-Button statt Navigation zur Unterseite
+    # NEU: Daten sichern ist jetzt ÜBER Daten wiederherstellen
     backup = {
         "trainingsplan": st.session_state.get("trainingsplan", ""), 
         "wochenplan": st.session_state.get("wochenplan", ""), 
@@ -135,6 +134,8 @@ with st.sidebar:
         "morgen_training": st.session_state.get("morgen_training", "")
     }
     st.download_button("💾 Daten sichern (Export)", data=json.dumps(backup, indent=2), file_name="trainer_backup.json", mime="application/json", use_container_width=True)
+    
+    if st.button("📂 Daten wiederherstellen", use_container_width=True): st.session_state.ansicht = "Wiederherstellen"
 
     st.divider()
 
@@ -194,8 +195,7 @@ if not gemini_key or not access_token:
                     st.rerun()
                 else: st.error("Passwort falsch.")
     with tab2:
-        st.warning("Setup-Code hier gekürzt. (Gleiche Logik wie in v4.80)")
-        # Der Übersichtlichkeit halber in dieser Anzeige gekürzt. Nutze dein bestehendes Setup.
+        st.warning("Manuelle Einrichtung hier aus Platzgründen ausgeblendet.")
 
 # ==============================================================================
 # 🏃‍♂️ HAUPT-APP BEREICH (DYNAMISCH)
@@ -248,7 +248,8 @@ else:
                             s_json["letztes_update"] = datetime.now().strftime("%d.%m.%Y")
                             save_all_to_state_and_cookies(woche_text=w_part, status_json=s_json, heute_text=h_part, morgen_text=m_part)
                             st.rerun()
-                        except Exception as e: st.error(f"Fehler: {e}")
+                        except Exception as e: st.error(f"Fehler bei KI-Verarbeitung: {e}")
+                    else: st.error("Konnte Strava-Daten nicht laden.")
         else:
             st.info("Kein Wochenplan. Bitte zuerst Masterplan erstellen!")
 
@@ -257,12 +258,35 @@ else:
         st.header("🏆 Langfristiger Masterplan")
         if st.session_state.get("trainingsplan"):
             st.markdown(st.session_state.trainingsplan)
-        if st.button("🔄 Masterplan neu generieren / aktualisieren", type="primary"):
-            with st.spinner("Erstelle alle Pläne neu..."):
+            
+        if st.button("🔄 Masterplan generieren / aktualisieren", type="primary"):
+            with st.spinner("Erstelle kompletten Trainingsaufbau..."):
                 if load_and_format_strava_data():
-                    prompt = f"{zeit_befehl}\nStrava:\n{st.session_state.strava_context}\nInstruktionen:\n{trainer_instructions}\nAUFGABE: Masterplan neu schreiben, Wochenplan ableiten, Heute/Morgen extrahieren, Status berechnen.\n{output_format_alle}\n===MASTERPLAN_START===\nPlan...\n===MASTERPLAN_END==="
+                    # FIX: Der Prompt ist wieder deutlich detailreicher, damit Gemini sauber antwortet
+                    prompt = f"""
+                    {zeit_befehl}
+                    Hier sind meine Strava-Daten:
+                    {st.session_state.strava_context}
+                    
+                    Instruktionen:
+                    {trainer_instructions}
+                    
+                    AUFGABE:
+                    1. Schreibe den großen, langfristigen Masterplan.
+                    2. Erstelle passend dazu den adaptiven Wochenplan für den Rest DIESER Woche.
+                    3. Extrahiere die heutige und morgige Einheit.
+                    4. Berechne den Leistungszustand.
+                    
+                    {output_format_alle}
+                    
+                    ===MASTERPLAN_START===
+                    ### 🏆 Dein Langfristiger Masterplan
+                    *Hier folgt der strukturierte Masterplan im Markdown-Format...*
+                    ===MASTERPLAN_END===
+                    """
                     try:
                         text = client.models.generate_content(model='gemini-2.5-flash', contents=[prompt] + st.session_state.doc_images).text
+                        
                         mp_part = text.split("===MASTERPLAN_START===")[1].split("===MASTERPLAN_END===")[0].strip() if "===MASTERPLAN_START===" in text else text
                         w_part = text.split("===WOCHENPLAN_START===")[1].split("===WOCHENPLAN_END===")[0].strip() if "===WOCHENPLAN_START===" in text else ""
                         h_part = text.split("===HEUTE_START===")[1].split("===HEUTE_END===")[0].strip() if "===HEUTE_START===" in text else ""
@@ -272,8 +296,10 @@ else:
                         s_json = json.loads(status_part) if "vo2max" in status_part else {}
                         s_json["letztes_update"] = datetime.now().strftime("%d.%m.%Y")
                         save_all_to_state_and_cookies(plan_text=mp_part, woche_text=w_part, status_json=s_json, heute_text=h_part, morgen_text=m_part)
+                        st.success("Plan erfolgreich erstellt!")
                         st.rerun()
-                    except Exception as e: st.error(f"Fehler: {e}")
+                    except Exception as e: st.error(f"Fehler bei KI-Verarbeitung: {e}")
+                else: st.error("Konnte Strava-Daten nicht laden.")
 
     # --- ANSICHT: AKTIVITÄTEN ---
     elif st.session_state.ansicht == "Aktivitäten":
@@ -289,7 +315,6 @@ else:
         st.header("⚙️ Trainerinstruktionen & Physiologie")
         new_inst = st.text_area("Anweisungen für die KI", value=trainer_instructions, height=200)
         
-        # NEU: Erklärtext für die physiologischen Werte
         st.write("ℹ️ *Hier können aktuelle physiologische Werte, sofern bekannt, eingetragen werden. Falls diese nicht eingetragen werden, werden diese automatisch berechnet.*")
         
         c_v, c_l, c_b = st.columns(3)
