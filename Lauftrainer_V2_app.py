@@ -16,7 +16,7 @@ cookie_manager = stx.CookieManager()
 st.write("") 
 
 st.title("🏃‍♂️🚴 KI Trainer: Strava & Gemini")
-st.caption("🔒 **Version 4.94** – Stabilitäts-Fix (Aufgeteilte API-Anfragen)")
+st.caption("🔒 **Version 4.96** – Cookie-Sharding (Aufteilung für stabilen Speicher)")
 
 # ==============================================================================
 # 🧠 SESSION STATE & COOKIES
@@ -36,15 +36,24 @@ if "temp_auth_data" in st.session_state: auth_data = st.session_state.temp_auth_
 physio_cookie = cookie_manager.get("physio_paket")
 physio_data = json.loads(physio_cookie) if isinstance(physio_cookie, str) else (physio_cookie or {})
 
-app_backup_cookie = cookie_manager.get("app_backup_paket")
-if app_backup_cookie:
-    try: 
-        backup_data = json.loads(app_backup_cookie) if isinstance(app_backup_cookie, str) else app_backup_cookie
-        if backup_data:
-            for key in ["trainingsplan", "wochenplan", "leistungsstatus", "heute_training", "morgen_training"]:
-                if key not in st.session_state and backup_data.get(key):
-                    st.session_state[key] = backup_data[key]
-    except: pass
+# --- NEU: AUFGETEILTES LADEN DER COOKIES ---
+try:
+    c_master = cookie_manager.get("app_backup_master")
+    if c_master and "trainingsplan" not in st.session_state: 
+        st.session_state.trainingsplan = c_master
+        
+    c_woche = cookie_manager.get("app_backup_woche")
+    if c_woche:
+        w_data = json.loads(c_woche) if isinstance(c_woche, str) else c_woche
+        if "wochenplan" not in st.session_state: st.session_state.wochenplan = w_data.get("wochenplan", "")
+        if "heute_training" not in st.session_state: st.session_state.heute_training = w_data.get("heute", "")
+        if "morgen_training" not in st.session_state: st.session_state.morgen_training = w_data.get("morgen", "")
+        
+    c_status = cookie_manager.get("app_backup_status")
+    if c_status:
+        s_data = json.loads(c_status) if isinstance(c_status, str) else c_status
+        if "leistungsstatus" not in st.session_state: st.session_state.leistungsstatus = s_data
+except: pass
 
 # ==============================================================================
 # ⚙️ HILFSFUNKTIONEN
@@ -56,14 +65,20 @@ def save_all_to_state_and_cookies(plan_text=None, woche_text=None, status_json=N
     if heute_text is not None: st.session_state.heute_training = heute_text
     if morgen_text is not None: st.session_state.morgen_training = morgen_text
     
-    backup_paket = {
-        "trainingsplan": st.session_state.get("trainingsplan", ""),
+    # --- NEU: AUFGETEILTES SPEICHERN IN 3 COOKIES ---
+    t_stamp = int(time.time())
+    if st.session_state.get("trainingsplan"):
+        cookie_manager.set("app_backup_master", st.session_state.trainingsplan, key=f"set_m_{t_stamp}")
+        
+    woche_paket = {
         "wochenplan": st.session_state.get("wochenplan", ""),
-        "leistungsstatus": st.session_state.get("leistungsstatus", {}),
-        "heute_training": st.session_state.get("heute_training", ""),
-        "morgen_training": st.session_state.get("morgen_training", "")
+        "heute": st.session_state.get("heute_training", ""),
+        "morgen": st.session_state.get("morgen_training", "")
     }
-    cookie_manager.set("app_backup_paket", json.dumps(backup_paket), key=f"set_backup_{int(time.time())}")
+    cookie_manager.set("app_backup_woche", json.dumps(woche_paket), key=f"set_w_{t_stamp}")
+    
+    if st.session_state.get("leistungsstatus"):
+        cookie_manager.set("app_backup_status", json.dumps(st.session_state.leistungsstatus), key=f"set_s_{t_stamp}")
 
 def get_valid_strava_token():
     global auth_data
@@ -114,6 +129,21 @@ def load_and_format_strava_data():
                 return True
         return False
     except: return False
+
+def ask_gemini_with_retry(client, prompt, images=[], max_retries=3):
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            resp = client.models.generate_content(model='gemini-2.5-flash', contents=[prompt] + images)
+            return resp.text
+        except Exception as e:
+            last_error = e
+            if "503" in str(e) or "429" in str(e):
+                time.sleep(3)
+                continue
+            else:
+                raise e
+    raise last_error
 
 # ==============================================================================
 # 🎛️ COCKPIT LINKS (STREAMLIT SIDEBAR)
@@ -170,6 +200,10 @@ with st.sidebar:
         cookie_manager.delete("auth_paket")
         cookie_manager.delete("physio_paket")
         cookie_manager.delete("app_backup_paket")
+        # NEU: Auch die neuen Split-Cookies löschen
+        cookie_manager.delete("app_backup_master")
+        cookie_manager.delete("app_backup_woche")
+        cookie_manager.delete("app_backup_status")
         st.session_state.clear()
         time.sleep(0.5)
         st.rerun()
@@ -270,7 +304,7 @@ else:
                     if load_and_format_strava_data():
                         prompt = f"{zeit_befehl}\nMasterplan:\n{st.session_state.trainingsplan}\nStrava:\n{st.session_state.strava_context}\nInstruktionen:\n{trainer_instructions}\nAUFGABE: Wochenplan anpassen, Heute/Morgen extrahieren, Status berechnen.\n{output_format_alle}"
                         try:
-                            text = client.models.generate_content(model='gemini-2.5-flash', contents=[prompt] + st.session_state.doc_images).text
+                            text = ask_gemini_with_retry(client, prompt, st.session_state.doc_images)
                             status_part = text.split("===STATUS_START===")[1].split("===STATUS_END===")[0].strip() if "===STATUS_START===" in text else "{}"
                             h_part = text.split("===HEUTE_START===")[1].split("===HEUTE_END===")[0].strip() if "===HEUTE_START===" in text else ""
                             m_part = text.split("===MORGEN_START===")[1].split("===MORGEN_END===")[0].strip() if "===MORGEN_START===" in text else ""
@@ -294,8 +328,7 @@ else:
         if st.button("🔄 Masterplan generieren / aktualisieren", type="primary"):
             if load_and_format_strava_data():
                 try:
-                    # SCHRITT 1: NUR DEN MASTERPLAN GENERIEREN
-                    with st.spinner("Schritt 1/2: Erstelle langfristigen Masterplan... (Das kann kurz dauern)"):
+                    with st.spinner("Schritt 1/2: Erstelle langfristigen Masterplan..."):
                         prompt_master = f"""
                         {zeit_befehl}
                         Hier sind meine Strava-Daten:
@@ -305,12 +338,10 @@ else:
                         {trainer_instructions}
                         
                         AUFGABE:
-                        Erstelle AUSSCHLIESSLICH den großen, langfristigen Masterplan im Markdown-Format. Keine Wochenpläne, keine JSON-Daten.
+                        Erstelle AUSSCHLIESSLICH den großen, langfristigen Masterplan im Markdown-Format. Fasse dich prägnant, konzentriere dich auf die Wochenstruktur, vermeide lange Romane. Keine Wochenpläne, keine JSON-Daten.
                         """
-                        resp_master = client.models.generate_content(model='gemini-2.5-flash', contents=[prompt_master] + st.session_state.doc_images)
-                        mp_part = resp_master.text
+                        mp_part = ask_gemini_with_retry(client, prompt_master, st.session_state.doc_images)
                     
-                    # SCHRITT 2: WOCHENPLAN & STATUS ABLEITEN
                     with st.spinner("Schritt 2/2: Leite Wochenplan, Status und Tagesziele ab..."):
                         prompt_woche = f"""
                         {zeit_befehl}
@@ -325,8 +356,7 @@ else:
                         
                         {output_format_alle}
                         """
-                        resp_woche = client.models.generate_content(model='gemini-2.5-flash', contents=[prompt_woche])
-                        text = resp_woche.text
+                        text = ask_gemini_with_retry(client, prompt_woche)
                         
                         w_part = text.split("===WOCHENPLAN_START===")[1].split("===WOCHENPLAN_END===")[0].strip() if "===WOCHENPLAN_START===" in text else ""
                         h_part = text.split("===HEUTE_START===")[1].split("===HEUTE_END===")[0].strip() if "===HEUTE_START===" in text else ""
@@ -340,7 +370,7 @@ else:
                         st.success("Plan erfolgreich erstellt!")
                         st.rerun()
                 except Exception as e: 
-                    st.error(f"Fehler bei KI-Verarbeitung: {e}\nTipp: Versuche, keine oder weniger PDF-Dateien hochzuladen, falls der Fehler bleibt.")
+                    st.error(f"Fehler bei KI-Verarbeitung: {e}")
             else: 
                 st.error("Konnte Strava-Daten nicht laden.")
 
@@ -396,7 +426,7 @@ else:
         with st.chat_message("assistant"):
             with st.spinner("Coach überlegt..."):
                 try:
-                    resp = client.models.generate_content(model='gemini-2.5-flash', contents=[f"{zeit_befehl}\nPlan:\n{st.session_state.get('wochenplan')}\nFrage: {user_input}"]).text
+                    resp = ask_gemini_with_retry(client, f"{zeit_befehl}\nPlan:\n{st.session_state.get('wochenplan')}\nFrage: {user_input}")
                     st.markdown(resp)
                     st.session_state.messages.append({"role": "assistant", "content": resp})
-                except Exception as e: st.error("Fehler")
+                except Exception as e: st.error("Server-Fehler. Bitte später noch einmal probieren.")
