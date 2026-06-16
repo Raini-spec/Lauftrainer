@@ -16,7 +16,7 @@ cookie_manager = stx.CookieManager()
 st.write("") 
 
 st.title("🏃‍♂️🚴 KI Trainer: Strava & Gemini")
-st.caption("🔒 **Version 4.93** – Vollständiger Manueller Setup-Bereich zum Teilen")
+st.caption("🔒 **Version 4.94** – Stabilitäts-Fix (Aufgeteilte API-Anfragen)")
 
 # ==============================================================================
 # 🧠 SESSION STATE & COOKIES
@@ -292,33 +292,42 @@ else:
             st.markdown(st.session_state.trainingsplan)
             
         if st.button("🔄 Masterplan generieren / aktualisieren", type="primary"):
-            with st.spinner("Erstelle kompletten Trainingsaufbau..."):
-                if load_and_format_strava_data():
-                    prompt = f"""
-                    {zeit_befehl}
-                    Hier sind meine Strava-Daten:
-                    {st.session_state.strava_context}
-                    
-                    Instruktionen:
-                    {trainer_instructions}
-                    
-                    AUFGABE:
-                    1. Schreibe den großen, langfristigen Masterplan.
-                    2. Erstelle passend dazu den adaptiven Wochenplan für den Rest DIESER Woche.
-                    3. Extrahiere die heutige und morgige Einheit.
-                    4. Berechne den Leistungszustand.
-                    
-                    {output_format_alle}
-                    
-                    ===MASTERPLAN_START===
-                    ### 🏆 Dein Langfristiger Masterplan
-                    *Hier folgt der strukturierte Masterplan im Markdown-Format...*
-                    ===MASTERPLAN_END===
-                    """
-                    try:
-                        text = client.models.generate_content(model='gemini-2.5-flash', contents=[prompt] + st.session_state.doc_images).text
+            if load_and_format_strava_data():
+                try:
+                    # SCHRITT 1: NUR DEN MASTERPLAN GENERIEREN
+                    with st.spinner("Schritt 1/2: Erstelle langfristigen Masterplan... (Das kann kurz dauern)"):
+                        prompt_master = f"""
+                        {zeit_befehl}
+                        Hier sind meine Strava-Daten:
+                        {st.session_state.strava_context}
                         
-                        mp_part = text.split("===MASTERPLAN_START===")[1].split("===MASTERPLAN_END===")[0].strip() if "===MASTERPLAN_START===" in text else text
+                        Instruktionen:
+                        {trainer_instructions}
+                        
+                        AUFGABE:
+                        Erstelle AUSSCHLIESSLICH den großen, langfristigen Masterplan im Markdown-Format. Keine Wochenpläne, keine JSON-Daten.
+                        """
+                        resp_master = client.models.generate_content(model='gemini-2.5-flash', contents=[prompt_master] + st.session_state.doc_images)
+                        mp_part = resp_master.text
+                    
+                    # SCHRITT 2: WOCHENPLAN & STATUS ABLEITEN
+                    with st.spinner("Schritt 2/2: Leite Wochenplan, Status und Tagesziele ab..."):
+                        prompt_woche = f"""
+                        {zeit_befehl}
+                        Basierend auf diesem Masterplan:\n{mp_part}
+                        
+                        Strava-Daten:\n{st.session_state.strava_context}
+                        
+                        AUFGABE:
+                        1. Erstelle den adaptiven Wochenplan für den Rest DIESER Woche.
+                        2. Extrahiere die heutige und morgige Einheit.
+                        3. Berechne den Leistungszustand.
+                        
+                        {output_format_alle}
+                        """
+                        resp_woche = client.models.generate_content(model='gemini-2.5-flash', contents=[prompt_woche])
+                        text = resp_woche.text
+                        
                         w_part = text.split("===WOCHENPLAN_START===")[1].split("===WOCHENPLAN_END===")[0].strip() if "===WOCHENPLAN_START===" in text else ""
                         h_part = text.split("===HEUTE_START===")[1].split("===HEUTE_END===")[0].strip() if "===HEUTE_START===" in text else ""
                         m_part = text.split("===MORGEN_START===")[1].split("===MORGEN_END===")[0].strip() if "===MORGEN_START===" in text else ""
@@ -326,11 +335,14 @@ else:
                         
                         s_json = json.loads(status_part) if "vo2max" in status_part else {}
                         s_json["letztes_update"] = datetime.now().strftime("%d.%m.%Y")
+                        
                         save_all_to_state_and_cookies(plan_text=mp_part, woche_text=w_part, status_json=s_json, heute_text=h_part, morgen_text=m_part)
                         st.success("Plan erfolgreich erstellt!")
                         st.rerun()
-                    except Exception as e: st.error(f"Fehler bei KI-Verarbeitung: {e}")
-                else: st.error("Konnte Strava-Daten nicht laden.")
+                except Exception as e: 
+                    st.error(f"Fehler bei KI-Verarbeitung: {e}\nTipp: Versuche, keine oder weniger PDF-Dateien hochzuladen, falls der Fehler bleibt.")
+            else: 
+                st.error("Konnte Strava-Daten nicht laden.")
 
     # --- ANSICHT: AKTIVITÄTEN ---
     elif st.session_state.ansicht == "Aktivitäten":
