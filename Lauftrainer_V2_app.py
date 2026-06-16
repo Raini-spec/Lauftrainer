@@ -16,7 +16,7 @@ cookie_manager = stx.CookieManager()
 st.write("") 
 
 st.title("🏃‍♂️🚴 KI Trainer: Strava & Gemini")
-st.caption("🔒 **Version 4.92** – Menü-Fix & Stabiler Masterplan-Prompt")
+st.caption("🔒 **Version 4.93** – Vollständiger Manueller Setup-Bereich zum Teilen")
 
 # ==============================================================================
 # 🧠 SESSION STATE & COOKIES
@@ -125,7 +125,6 @@ with st.sidebar:
     if st.button("👟 Letzte Aktivitäten", use_container_width=True): st.session_state.ansicht = "Aktivitäten"
     if st.button("⚙️ Trainerinstruktionen & Co.", use_container_width=True): st.session_state.ansicht = "Einstellungen"
     
-    # NEU: Daten sichern ist jetzt ÜBER Daten wiederherstellen
     backup = {
         "trainingsplan": st.session_state.get("trainingsplan", ""), 
         "wochenplan": st.session_state.get("wochenplan", ""), 
@@ -176,17 +175,18 @@ with st.sidebar:
         st.rerun()
 
 # ==============================================================================
-# 🔑 SCHLEUSE (LOGIN)
+# 🔑 SCHLEUSE (LOGIN ODER VOLLSTÄNDIGES SETUP ZUM TEILEN)
 # ==============================================================================
 gemini_key = auth_data.get("gemini_key")
 access_token = auth_data.get("access_token")
 
 if not gemini_key or not access_token:
-    st.info("👋 Willkommen! Bitte einloggen oder App einrichten.")
+    st.info("👋 Willkommen! Bitte einloggen oder App neu einrichten.")
     tab1, tab2 = st.tabs(["📁 Login (Datei)", "⌨️ Manuelle Einrichtung"])
+    
     with tab1:
         config_file = st.file_uploader("Konfigurations-Datei (.json)", type=["json"])
-        master_pw = st.text_input("Master-Passwort", type="password")
+        master_pw = st.text_input("Master-Passwort", type="password", key="login_pw")
         if st.button("🔐 Entsperren"):
             if config_file and master_pw:
                 content = json.load(config_file)
@@ -194,8 +194,40 @@ if not gemini_key or not access_token:
                     st.session_state.temp_auth_data = content
                     st.rerun()
                 else: st.error("Passwort falsch.")
+                
     with tab2:
-        st.warning("Manuelle Einrichtung hier aus Platzgründen ausgeblendet.")
+        st.write("⚙️ **App-Einrichtung für dich oder neue Nutzer:**")
+        in_pw = st.text_input("🔑 Wähle dein Master-Passwort", type="password", key="setup_pw")
+        in_gemini = st.text_input("1. Gemini API Key", type="password", key="setup_gemini")
+        in_client_id = st.text_input("2. Strava Client-ID", key="setup_id")
+        in_client_secret = st.text_input("3. Geheimer Clientschlüssel", type="password", key="setup_secret")
+        
+        if in_client_id:
+            auth_url = f"https://www.strava.com/oauth/authorize?client_id={in_client_id}&response_type=code&redirect_uri=http://localhost/exchange_token&approval_prompt=force&scope=activity:read_all"
+            st.markdown(f"[👉 Klicke hier, um Strava freizugeben]({auth_url})")
+            
+        in_code = st.text_input("4. Kopiere den Code aus der Adresszeile (nach dem Autorisieren) hier hinein", key="setup_code")
+        
+        if st.button("🚀 App aktivieren & Konfiguration erstellen", key="btn_setup"):
+            if in_pw and in_gemini and in_client_id and in_client_secret and in_code:
+                url = "https://www.strava.com/oauth/token"
+                payload = {"client_id": in_client_id, "client_secret": in_client_secret, "code": in_code, "grant_type": "authorization_code"}
+                res = requests.post(url, data=payload)
+                if res.status_code == 200:
+                    res_data = res.json()
+                    neues_paket = {
+                        "master_pw": in_pw, "gemini_key": in_gemini, "client_id": in_client_id, 
+                        "client_secret": in_client_secret, "access_token": res_data["access_token"], 
+                        "refresh_token": res_data["refresh_token"], "expires_at": res_data["expires_at"]
+                    }
+                    st.session_state["auto_config_json"] = json.dumps(neues_paket, indent=2)
+                    st.success("App erfolgreich konfiguriert!")
+                    
+        if "auto_config_json" in st.session_state:
+            st.download_button("📥 JETZT CONFIG.JSON HERUNTERLADEN", data=st.session_state["auto_config_json"], file_name="config.json", mime="application/json")
+            if st.button("🔄 App jetzt starten", key="btn_start_after_setup"):
+                st.session_state.temp_auth_data = json.loads(st.session_state["auto_config_json"])
+                st.rerun()
 
 # ==============================================================================
 # 🏃‍♂️ HAUPT-APP BEREICH (DYNAMISCH)
@@ -251,7 +283,7 @@ else:
                         except Exception as e: st.error(f"Fehler bei KI-Verarbeitung: {e}")
                     else: st.error("Konnte Strava-Daten nicht laden.")
         else:
-            st.info("Kein Wochenplan. Bitte zuerst Masterplan erstellen!")
+            st.info("Kein Wochenplan vorhanden. Generiere zuerst deinen großen Masterplan!")
 
     # --- ANSICHT: MASTERPLAN ---
     elif st.session_state.ansicht == "Masterplan":
@@ -262,7 +294,6 @@ else:
         if st.button("🔄 Masterplan generieren / aktualisieren", type="primary"):
             with st.spinner("Erstelle kompletten Trainingsaufbau..."):
                 if load_and_format_strava_data():
-                    # FIX: Der Prompt ist wieder deutlich detailreicher, damit Gemini sauber antwortet
                     prompt = f"""
                     {zeit_befehl}
                     Hier sind meine Strava-Daten:
@@ -339,7 +370,9 @@ else:
             save_all_to_state_and_cookies(b.get("trainingsplan"), b.get("wochenplan"), b.get("leistungsstatus"), b.get("heute_training"), b.get("morgen_training"))
             st.success("Geladen!"); time.sleep(0.5); st.session_state.ansicht = "Wochenplan"; st.rerun()
 
-    # --- CHAT (Immer unten sichtbar) ---
+    # ==============================================================================
+    # 💬 CHAT-INTERFAZ (COACH TALK)
+    # ==============================================================================
     st.divider()
     st.subheader("💬 Chat mit Coach")
     for msg in st.session_state.messages:
