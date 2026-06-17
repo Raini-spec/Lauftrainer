@@ -16,7 +16,7 @@ cookie_manager = stx.CookieManager()
 st.write("") 
 
 st.title("🏃‍♂️🚴 KI Trainer: Strava & Gemini")
-st.caption("🔒 **Version 5.01** – Distanz- & Zielzeit-Setup (Modern UI)")
+st.caption("🔒 **Version 5.02** – Bugfix Supabase-URL & Dropdown-Menü")
 
 # ==============================================================================
 # 🧠 SESSION STATE & CLOUD DATABASE (SUPABASE)
@@ -35,7 +35,9 @@ auth_data = json.loads(auth_cookie) if isinstance(auth_cookie, str) else (auth_c
 if "temp_auth_data" in st.session_state: auth_data = st.session_state.temp_auth_data
 
 try:
-    supabase: Client = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
+    # AUTOMATISCHER BUGFIX: Entfernt versehentliche Schrägstriche am Ende der URL
+    clean_url = st.secrets["SUPABASE_URL"].rstrip("/")
+    supabase: Client = create_client(clean_url, st.secrets["SUPABASE_KEY"])
 except Exception as e:
     st.error("Datenbankverbindung konnte nicht hergestellt werden. Bitte Secrets prüfen.")
 
@@ -180,7 +182,6 @@ with st.sidebar:
         st.info("ℹ️ **Hinweis:** Dieser Wert ist eine KI-Schätzung. Ein lang anhaltender Anstieg liegt oft an einem anfangs zu gering geschätzten Startwert.")
         
         st.markdown("**🎯 Laufprognosen:**")
-        # Hässliche Bulletpoints durch cleane Emojis und Code-Blöcke ersetzt
         st.markdown(f"🥇 **5 km:** &nbsp;&nbsp; `{status.get('prognose_5k', '---')}`")
         st.markdown(f"🥈 **10 km:** &nbsp; `{status.get('prognose_10k', '---')}`")
         st.markdown(f"🥉 **21 km:** &nbsp; `{status.get('prognose_21k', '---')}`")
@@ -421,7 +422,8 @@ else:
         aktuelles_ziel = st.session_state.physio_data.get("ziel_typ", "Formaufbau")
         index_ziel = ziel_optionen.index(aktuelles_ziel) if aktuelles_ziel in ziel_optionen else 1
         
-        new_ziel_typ = st.radio("Was ist dein aktueller Fokus?", ziel_optionen, index=index_ziel)
+        # NEU: Selectbox (Dropdown) statt Radio-Buttons
+        new_ziel_typ = st.selectbox("Was ist dein aktueller Fokus?", ziel_optionen, index=index_ziel)
         
         new_event_name = st.session_state.physio_data.get("event_name", "")
         new_event_datum = st.session_state.physio_data.get("event_datum", "")
@@ -430,7 +432,7 @@ else:
         
         if new_ziel_typ == "Spezielles Wettkampf-Event":
             st.markdown("Bitte gib die Details für dein Event ein:")
-            c_e, c_d, c_di, c_z = st.columns(4) # Erweitert auf 4 Spalten
+            c_e, c_d, c_di, c_z = st.columns(4)
             with c_e: new_event_name = st.text_input("Event-Name (z.B. Berlin Marathon)", value=new_event_name)
             with c_d: new_event_datum = st.text_input("Datum (z.B. 25.09.2026)", value=new_event_datum)
             with c_di: new_distanz = st.text_input("Distanz (z.B. 42,2 km oder 50 km)", value=new_distanz)
