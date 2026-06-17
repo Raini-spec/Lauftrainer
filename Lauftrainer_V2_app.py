@@ -299,6 +299,7 @@ else:
 
     # --- ANSICHT: WOCHENPLAN ---
     if st.session_state.ansicht == "Wochenplan":
+        load_all_from_supabase()
         st.header("📅 Aktueller Wochenplan")
         
         c1, c2 = st.columns(2)
