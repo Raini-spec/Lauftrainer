@@ -27,6 +27,9 @@ if "letzte_10_aktivitaeten" not in st.session_state: st.session_state.letzte_10_
 if "doc_names" not in st.session_state: st.session_state.doc_names = []
 if "doc_texts" not in st.session_state: st.session_state.doc_texts = []
 if "doc_images" not in st.session_state: st.session_state.doc_images = []
+if "gym_images" not in st.session_state: st.session_state.gym_images = []
+if "plan_images" not in st.session_state: st.session_state.plan_images = []
+if "doc_texts" not in st.session_state: st.session_state.doc_texts = []    
 if "ansicht" not in st.session_state: st.session_state.ansicht = "Wochenplan"
 if "physio_data" not in st.session_state: st.session_state.physio_data = {}
 
@@ -414,6 +417,15 @@ else:
                 st.info(act)
         else:
             st.warning("Konnte Strava-Daten nicht abrufen.")
+            
+        st.divider()
+        st.subheader("🏋️‍♂️ Zusätzliches Training (Bilder)")
+        gym_uploads = st.file_uploader("Lade bis zu 5 Screenshots hoch (z.B. Fitnessstudio)", accept_multiple_files=True, type=["png", "jpg", "jpeg"])
+        
+        if gym_uploads:
+            if len(gym_uploads) > 5: st.warning("Nur die ersten 5 Bilder werden genutzt.")
+            st.session_state.gym_images = [Image.open(f) for f in gym_uploads[:5]]
+            st.success(f"✅ {len(st.session_state.gym_images)} Bild(er) im Hintergrund gemerkt!")
 
     # --- ANSICHT: EINSTELLUNGEN ---
     elif st.session_state.ansicht == "Einstellungen":
