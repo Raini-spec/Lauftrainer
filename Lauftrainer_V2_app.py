@@ -16,7 +16,7 @@ cookie_manager = stx.CookieManager()
 st.write("") 
 
 st.title("🏃‍♂️🚴 KI Trainer: Strava & Gemini")
-st.caption("🔒 **Version 5.00** – Ziel-Setup, Zielpace & VO2max-Glättung")
+st.caption("🔒 **Version 5.01** – Distanz- & Zielzeit-Setup (Modern UI)")
 
 # ==============================================================================
 # 🧠 SESSION STATE & CLOUD DATABASE (SUPABASE)
@@ -83,7 +83,7 @@ def save_all_to_supabase(plan_text=None, woche_text=None, status_json=None, heut
         
         for k, v in daten_aktuell.items():
             supabase.table("trainer_daten").delete().eq("username", username).eq("schluessel", k).execute()
-            supabase.table("trainer_daten").insert({"username": username, "schluessel": k, "wert": v}).execute()
+            supabase.table("trainer_daten").insert({"username": username, "schluessel", k, "wert": v}).execute()
     except Exception as e:
         st.error(f"Fehler beim Speichern in der Cloud-Datenbank: {e}")
 
@@ -177,13 +177,13 @@ with st.sidebar:
         st.caption(f"Letztes Update: {status.get('letztes_update', '---')}")
         st.metric("Geschätzter VO2max", f"⚡ {status.get('vo2max', '---')}")
         
-        # NEU: VO2max Hinweis Box
         st.info("ℹ️ **Hinweis:** Dieser Wert ist eine KI-Schätzung. Ein lang anhaltender Anstieg liegt oft an einem anfangs zu gering geschätzten Startwert.")
         
         st.markdown("**🎯 Laufprognosen:**")
-        st.markdown(f"• **5 km:** {status.get('prognose_5k', '---')}")
-        st.markdown(f"• **10 km:** {status.get('prognose_10k', '---')}")
-        st.markdown(f"• **21 km:** {status.get('prognose_21k', '---')}")
+        # Hässliche Bulletpoints durch cleane Emojis und Code-Blöcke ersetzt
+        st.markdown(f"🥇 **5 km:** &nbsp;&nbsp; `{status.get('prognose_5k', '---')}`")
+        st.markdown(f"🥈 **10 km:** &nbsp; `{status.get('prognose_10k', '---')}`")
+        st.markdown(f"🥉 **21 km:** &nbsp; `{status.get('prognose_21k', '---')}`")
         
         st.write("")
         st.markdown("**🔥 Akute Belastung:**")
@@ -284,14 +284,16 @@ else:
     """
 
     # Kontext auslesen für KI
-    ziel_typ = st.session_state.physio_data.get("ziel_typ", "Formaufbau / Allgemein")
+    ziel_typ = st.session_state.physio_data.get("ziel_typ", "Formaufbau")
     trainer_instructions = st.session_state.physio_data.get("instructions", "Keine speziellen Anweisungen.")
     aktueller_vo2max = st.session_state.get('leistungsstatus', {}).get('vo2max', 'Nicht berechnet')
     
     ziel_kontext = f"**Trainingsziel:** {ziel_typ}\n"
     if ziel_typ == "Spezielles Wettkampf-Event":
-        ziel_kontext += f"**Event:** {st.session_state.physio_data.get('event_name', '?')} am {st.session_state.physio_data.get('event_datum', '?')}\n"
-        ziel_kontext += f"**Zielpace:** {st.session_state.physio_data.get('zielpace', '?')}\n"
+        ziel_kontext += f"**Event-Name:** {st.session_state.physio_data.get('event_name', '?')}\n"
+        ziel_kontext += f"**Event-Datum:** {st.session_state.physio_data.get('event_datum', '?')}\n"
+        ziel_kontext += f"**Geplante Distanz:** {st.session_state.physio_data.get('distanz', '?')}\n"
+        ziel_kontext += f"**Angestrebte Zielzeit:** {st.session_state.physio_data.get('zielzeit', '?')}\n"
 
     # --- ANSICHT: WOCHENPLAN ---
     if st.session_state.ansicht == "Wochenplan":
@@ -414,7 +416,6 @@ else:
     elif st.session_state.ansicht == "Einstellungen":
         st.header("⚙️ Setup: Ziele & Instruktionen")
         
-        # NEU: Das strukturierte Ziel-Setup
         st.subheader("🎯 Dein Hauptziel")
         ziel_optionen = ["Spezielles Wettkampf-Event", "Formaufbau", "Formerhalt"]
         aktuelles_ziel = st.session_state.physio_data.get("ziel_typ", "Formaufbau")
@@ -424,14 +425,16 @@ else:
         
         new_event_name = st.session_state.physio_data.get("event_name", "")
         new_event_datum = st.session_state.physio_data.get("event_datum", "")
-        new_zielpace = st.session_state.physio_data.get("zielpace", "")
+        new_distanz = st.session_state.physio_data.get("distanz", "")
+        new_zielzeit = st.session_state.physio_data.get("zielzeit", "")
         
         if new_ziel_typ == "Spezielles Wettkampf-Event":
             st.markdown("Bitte gib die Details für dein Event ein:")
-            c_e, c_d, c_p = st.columns(3)
+            c_e, c_d, c_di, c_z = st.columns(4) # Erweitert auf 4 Spalten
             with c_e: new_event_name = st.text_input("Event-Name (z.B. Berlin Marathon)", value=new_event_name)
             with c_d: new_event_datum = st.text_input("Datum (z.B. 25.09.2026)", value=new_event_datum)
-            with c_p: new_zielpace = st.text_input("Zielpace (z.B. 5:15 min/km)", value=new_zielpace)
+            with c_di: new_distanz = st.text_input("Distanz (z.B. 42,2 km oder 50 km)", value=new_distanz)
+            with c_z: new_zielzeit = st.text_input("Zielzeit (z.B. 3:45:00)", value=new_zielzeit)
         
         st.subheader("👨‍🏫 Spezifische Trainerinstruktionen")
         new_inst = st.text_area("Hier kannst du der KI besondere Vorlieben, Einschränkungen oder Trainingstage mitteilen:", 
@@ -443,8 +446,8 @@ else:
                 "ziel_typ": new_ziel_typ,
                 "event_name": new_event_name,
                 "event_datum": new_event_datum,
-                "zielpace": new_zielpace,
-                "instructions": new_inst
+                "distanz": new_distanz,
+                "zielzeit": new_zielzeit
             })
             save_all_to_supabase()
             st.success("Erfolgreich in Supabase für dein Profil gespeichert!")
