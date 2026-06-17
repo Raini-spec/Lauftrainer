@@ -83,7 +83,7 @@ def save_all_to_supabase(plan_text=None, woche_text=None, status_json=None, heut
         
         for k, v in daten_aktuell.items():
             supabase.table("trainer_daten").delete().eq("username", username).eq("schluessel", k).execute()
-            supabase.table("trainer_daten").insert({"username": username, "schluessel", k, "wert": v}).execute()
+            supabase.table("trainer_daten").insert({"username": username, "schluessel": k, "wert": v}).execute()
     except Exception as e:
         st.error(f"Fehler beim Speichern in der Cloud-Datenbank: {e}")
 
