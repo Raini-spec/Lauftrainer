@@ -150,11 +150,18 @@ def load_and_format_strava_data():
         return False
     except: return False
 
-def ask_gemini_with_retry(client, prompt, images=[], max_retries=3):
+ddef ask_gemini_with_retry(client, prompt, images=[], max_retries=3):
+    # Sammelt automatisch alle hochgeladenen Bilder aus beiden Bereichen ein
+    alle_bilder = images + st.session_state.get("gym_images", []) + st.session_state.get("plan_images", [])
+    
+    # Hängt eventuelle Texte aus PDFs unten an den Prompt an
+    if st.session_state.get("doc_texts"):
+        prompt += "\n\nZusätzliches Hintergrundwissen (aus PDFs):\n" + "\n".join(st.session_state.doc_texts)
+        
     last_error = None
     for attempt in range(max_retries):
         try:
-            resp = client.models.generate_content(model='gemini-2.5-flash', contents=[prompt] + images)
+            resp = client.models.generate_content(model='gemini-2.5-flash', contents=[prompt] + alle_bilder)
             return resp.text
         except Exception as e:
             last_error = e
@@ -468,6 +475,26 @@ else:
             })
             if save_all_to_supabase():
                 st.success("Erfolgreich in Supabase für dein Profil gespeichert!")
+                st.subheader("📄 Hintergrundwissen & Trainingspläne")
+                plan_uploads = st.file_uploader("Lade bis zu 5 Dokumente hoch (Pläne, PDFs, Bilder)", accept_multiple_files=True, type=["png", "jpg", "jpeg", "pdf"])
+        
+                if plan_uploads:
+                    if len(plan_uploads) > 5: st.warning("Nur die ersten 5 Dateien werden genutzt.")
+            
+                    st.session_state.plan_images = []
+                    st.session_state.doc_texts = [] # Leeren, damit es bei neuem Upload nicht doppelt speichert
+            
+                    for f in plan_uploads[:5]:
+                        if f.type == "application/pdf":
+                            try:
+                                reader = PyPDF2.PdfReader(f)
+                                text = "".join([page.extract_text() for page in reader.pages])
+                                st.session_state.doc_texts.append(text)
+                            except: pass
+                        else:
+                            st.session_state.plan_images.append(Image.open(f))
+                    
+                    st.success(f"✅ {len(plan_uploads[:5])} Datei(en) im Hintergrund gemerkt!")
 
     # ==============================================================================
     # 💬 CHAT-INTERFAZ (COACH TALK)
