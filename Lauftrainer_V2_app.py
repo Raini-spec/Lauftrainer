@@ -10,16 +10,20 @@ import PyPDF2
 import extra_streamlit_components as stx 
 import json 
 from PIL import Image 
+import pandas as pd
 
 st.set_page_config(page_title="KI Trainer", layout="centered")
 cookie_manager = stx.CookieManager()
 st.write("") 
 
 st.title("🏃‍♂️🚴 KI Trainer: Strava & Gemini")
-st.caption("🔒 **Version 4.96** – Cookie-Sharding (Aufteilung für stabilen Speicher)")
+st.caption("🔒 **Version 4.97** – Google Sheets Cloud-Datenbank Aktiv")
+
+# URL deiner Google Tabelle (wird für die st.connection genutzt)
+SHEET_URL = "https://docs.google.com/spreadsheets/d/15gW062PQ1j7bhUaWqzgXEmXqJX5fDE8O9UM3K4CBFrM/edit?usp=sharing"
 
 # ==============================================================================
-# 🧠 SESSION STATE & COOKIES
+# 🧠 SESSION STATE & CLOUD DATABASE (GOOGLE SHEETS)
 # ==============================================================================
 if "messages" not in st.session_state: st.session_state.messages = []
 if "strava_context" not in st.session_state: st.session_state.strava_context = ""
@@ -34,52 +38,81 @@ auth_data = json.loads(auth_cookie) if isinstance(auth_cookie, str) else (auth_c
 if "temp_auth_data" in st.session_state: auth_data = st.session_state.temp_auth_data
 
 physio_cookie = cookie_manager.get("physio_paket")
-physio_data = json.loads(physio_cookie) if isinstance(physio_cookie, str) else (physio_cookie or {})
+physio_data = json.loads(physio_cookie) if isinstance(physio_cookie, str) else (cookie_manager.get("physio_paket") or {})
 
-# --- NEU: AUFGETEILTES LADEN DER COOKIES ---
-try:
-    c_master = cookie_manager.get("app_backup_master")
-    if c_master and "trainingsplan" not in st.session_state: 
-        st.session_state.trainingsplan = c_master
+# --- FUNKTIONEN FÜR DIE CLOUD-DATENBANK (GOOGLE SHEETS) ---
+def load_all_from_google_sheets():
+    """Lädt die gespeicherten Pläne für den aktuellen Nutzer aus Google Sheets"""
+    username = auth_data.get("master_pw", "default_user")
+    try:
+        # Verbindung zum Sheet herstellen via integrierter gsheets-Schnittstelle
+        conn = st.connection("gsheets", type=st.connections.GSheetsConnection)
+        df = conn.read(spreadsheet=SHEET_URL, ttl="5s", sheet="daten")
         
-    c_woche = cookie_manager.get("app_backup_woche")
-    if c_woche:
-        w_data = json.loads(c_woche) if isinstance(c_woche, str) else c_woche
-        if "wochenplan" not in st.session_state: st.session_state.wochenplan = w_data.get("wochenplan", "")
-        if "heute_training" not in st.session_state: st.session_state.heute_training = w_data.get("heute", "")
-        if "morgen_training" not in st.session_state: st.session_state.morgen_training = w_data.get("morgen", "")
-        
-    c_status = cookie_manager.get("app_backup_status")
-    if c_status:
-        s_data = json.loads(c_status) if isinstance(c_status, str) else c_status
-        if "leistungsstatus" not in st.session_state: st.session_state.leistungsstatus = s_data
-except: pass
+        if df is not None and not df.empty:
+            # Filtere Daten für den aktuellen User
+            user_df = df[df["username"] == username]
+            for _, row in user_df.iterrows():
+                schluessel = row["schluessel"]
+                wert = row["wert"]
+                
+                if schluessel == "trainingsplan": st.session_state.trainingsplan = wert
+                elif schluessel == "wochenplan": st.session_state.wochenplan = wert
+                elif schluessel == "heute_training": st.session_state.heute_training = wert
+                elif schluessel == "morgen_training": st.session_state.morgen_training = wert
+                elif schluessel == "leistungsstatus":
+                    try: st.session_state.leistungsstatus = json.loads(wert)
+                    except: pass
+    except Exception as e:
+        pass # Falls das Sheet noch komplett leer ist, ignorieren
 
-# ==============================================================================
-# ⚙️ HILFSFUNKTIONEN
-# ==============================================================================
-def save_all_to_state_and_cookies(plan_text=None, woche_text=None, status_json=None, heute_text=None, morgen_text=None):
+def save_all_to_google_sheets(plan_text=None, woche_text=None, status_json=None, heute_text=None, morgen_text=None):
+    """Speichert die neuen Pläne direkt in das Google Sheet"""
     if plan_text is not None: st.session_state.trainingsplan = plan_text
     if woche_text is not None: st.session_state.wochenplan = woche_text
     if status_json is not None: st.session_state.leistungsstatus = status_json
     if heute_text is not None: st.session_state.heute_training = heute_text
     if morgen_text is not None: st.session_state.morgen_training = morgen_text
-    
-    # --- NEU: AUFGETEILTES SPEICHERN IN 3 COOKIES ---
-    t_stamp = int(time.time())
-    if st.session_state.get("trainingsplan"):
-        cookie_manager.set("app_backup_master", st.session_state.trainingsplan, key=f"set_m_{t_stamp}")
-        
-    woche_paket = {
-        "wochenplan": st.session_state.get("wochenplan", ""),
-        "heute": st.session_state.get("heute_training", ""),
-        "morgen": st.session_state.get("morgen_training", "")
-    }
-    cookie_manager.set("app_backup_woche", json.dumps(woche_paket), key=f"set_w_{t_stamp}")
-    
-    if st.session_state.get("leistungsstatus"):
-        cookie_manager.set("app_backup_status", json.dumps(st.session_state.leistungsstatus), key=f"set_s_{t_stamp}")
 
+    username = auth_data.get("master_pw", "default_user")
+    
+    try:
+        conn = st.connection("gsheets", type=st.connections.GSheetsConnection)
+        
+        # Aktuellen Stand holen, um Zeilen zu überschreiben oder anzufügen
+        try: df = conn.read(spreadsheet=SHEET_URL, sheet="daten")
+        except: df = pd.DataFrame(columns=["username", "schluessel", "wert"])
+        
+        if df is None: df = pd.DataFrame(columns=["username", "schluessel", "wert"])
+        
+        daten_aktuell = {
+            "trainingsplan": st.session_state.get("trainingsplan", ""),
+            "wochenplan": st.session_state.get("wochenplan", ""),
+            "heute_training": st.session_state.get("heute_training", ""),
+            "morgen_training": st.session_state.get("morgen_training", ""),
+            "leistungsstatus": json.dumps(st.session_state.get("leistungsstatus", {}))
+        }
+        
+        for k, v in daten_aktuell.items():
+            # Falls Zeile existiert, löschen (Überschreiben-Logik)
+            df = df[~((df["username"] == username) & (df["schluessel"] == k))]
+            # Neue Zeile anhängen
+            neue_zeile = pd.DataFrame([{"username": username, "schluessel": k, "wert": v}])
+            df = pd.concat([df, neue_zeile], ignore_index=True)
+            
+        # Zurück in Google Sheets schreiben
+        conn.update(spreadsheet=SHEET_URL, data=df, sheet="daten")
+    except Exception as e:
+        st.error(f"Fehler beim Speichern in der Google Cloud-Datenbank: {e}")
+
+# Initialer Cloud-Ladevorgang, wenn User eingeloggt ist
+if gemini_key := auth_data.get("gemini_key"):
+    if "trainingsplan" not in st.session_state:
+        load_all_from_google_sheets()
+
+# ==============================================================================
+# ⚙️ HILFSFUNKTIONEN
+# ==============================================================================
 def get_valid_strava_token():
     global auth_data
     expires_at = auth_data.get("expires_at")
@@ -199,11 +232,7 @@ with st.sidebar:
     if st.button("⚠️ App-Reset (Alle Daten löschen)", use_container_width=True, type="primary"):
         cookie_manager.delete("auth_paket")
         cookie_manager.delete("physio_paket")
-        cookie_manager.delete("app_backup_paket")
-        # NEU: Auch die neuen Split-Cookies löschen
-        cookie_manager.delete("app_backup_master")
-        cookie_manager.delete("app_backup_woche")
-        cookie_manager.delete("app_backup_status")
+        # Cloud-Reset wird über die Tabelle geregelt, Cookies aufräumen reicht hier
         st.session_state.clear()
         time.sleep(0.5)
         st.rerun()
@@ -211,7 +240,6 @@ with st.sidebar:
 # ==============================================================================
 # 🔑 SCHLEUSE (LOGIN ODER VOLLSTÄNDIGES SETUP ZUM TEILEN)
 # ==============================================================================
-gemini_key = auth_data.get("gemini_key")
 access_token = auth_data.get("access_token")
 
 if not gemini_key or not access_token:
@@ -300,7 +328,7 @@ else:
         if st.session_state.get("wochenplan"):
             st.markdown(st.session_state.wochenplan)
             if st.button("🔄 Wochenplan & Status aktualisieren", type="primary"):
-                with st.spinner("Berechne adaptiven Wochenplan..."):
+                with st.spinner("Berechne adaptiven Wochenplan und speichere in Google Cloud..."):
                     if load_and_format_strava_data():
                         prompt = f"{zeit_befehl}\nMasterplan:\n{st.session_state.trainingsplan}\nStrava:\n{st.session_state.strava_context}\nInstruktionen:\n{trainer_instructions}\nAUFGABE: Wochenplan anpassen, Heute/Morgen extrahieren, Status berechnen.\n{output_format_alle}"
                         try:
@@ -312,7 +340,9 @@ else:
                             
                             s_json = json.loads(status_part) if "vo2max" in status_part else {}
                             s_json["letztes_update"] = datetime.now().strftime("%d.%m.%Y")
-                            save_all_to_state_and_cookies(woche_text=w_part, status_json=s_json, heute_text=h_part, morgen_text=m_part)
+                            
+                            # Direkt in Google Sheets sichern
+                            save_all_to_google_sheets(woche_text=w_part, status_json=s_json, heute_text=h_part, morgen_text=m_part)
                             st.rerun()
                         except Exception as e: st.error(f"Fehler bei KI-Verarbeitung: {e}")
                     else: st.error("Konnte Strava-Daten nicht laden.")
@@ -342,7 +372,7 @@ else:
                         """
                         mp_part = ask_gemini_with_retry(client, prompt_master, st.session_state.doc_images)
                     
-                    with st.spinner("Schritt 2/2: Leite Wochenplan, Status und Tagesziele ab..."):
+                    with st.spinner("Schritt 2/2: Leite Wochenplan ab und synchronisiere Cloud-Tabelle..."):
                         prompt_woche = f"""
                         {zeit_befehl}
                         Basierend auf diesem Masterplan:\n{mp_part}
@@ -366,8 +396,9 @@ else:
                         s_json = json.loads(status_part) if "vo2max" in status_part else {}
                         s_json["letztes_update"] = datetime.now().strftime("%d.%m.%Y")
                         
-                        save_all_to_state_and_cookies(plan_text=mp_part, woche_text=w_part, status_json=s_json, heute_text=h_part, morgen_text=m_part)
-                        st.success("Plan erfolgreich erstellt!")
+                        # In Google Sheets sichern
+                        save_all_to_google_sheets(plan_text=mp_part, woche_text=w_part, status_json=s_json, heute_text=h_part, morgen_text=m_part)
+                        st.success("Plan erfolgreich erstellt und in Google Tabelle gesichert!")
                         st.rerun()
                 except Exception as e: 
                     st.error(f"Fehler bei KI-Verarbeitung: {e}")
@@ -409,7 +440,7 @@ else:
         upl = st.file_uploader("Backup-Datei hochladen", type=["json"])
         if upl and st.button("🔄 Einspielen"):
             b = json.load(upl)
-            save_all_to_state_and_cookies(b.get("trainingsplan"), b.get("wochenplan"), b.get("leistungsstatus"), b.get("heute_training"), b.get("morgen_training"))
+            save_all_to_google_sheets(b.get("trainingsplan"), b.get("wochenplan"), b.get("leistungsstatus"), b.get("heute_training"), b.get("morgen_training"))
             st.success("Geladen!"); time.sleep(0.5); st.session_state.ansicht = "Wochenplan"; st.rerun()
 
     # ==============================================================================
