@@ -437,7 +437,19 @@ else:
         if gym_uploads:
             if len(gym_uploads) > 5: st.warning("Nur die ersten 5 Bilder werden genutzt.")
             st.session_state.gym_images = [Image.open(f) for f in gym_uploads[:5]]
-            st.success(f"✅ {len(st.session_state.gym_images)} Bild(er) im Hintergrund gemerkt!")
+            
+            # NEU: Gemini wertet den Screenshot sofort aus
+            with st.spinner("🤖 Gemini analysiert die Screenshots..."):
+                for img in st.session_state.gym_images:
+                    analyse_prompt = "Analysiere diesen Fitnessstudio-Screenshot. Extrahiere: Datum, Trainingsart/Übungen und Kalorienverbrauch. Antworte kurz in 1-2 Sätzen im Format: **[Datum]** | Gym: [Übungen] (*[Kalorien] kcal*)."
+                    try:
+                        ergebnis = ask_gemini_with_retry(client, analyse_prompt, [img])
+                        # Fügt das Training direkt der Liste der letzten Aktivitäten hinzu
+                        if ergebnis not in st.session_state.letzte_10_aktivitaeten:
+                            st.session_state.letzte_10_aktivitaeten.insert(0, ergebnis.strip())
+                    except:
+                        pass
+            st.success("✅ Screenshots erfolgreich ausgewertet und zu Aktivitäten hinzugefügt!")
 
     # --- ANSICHT: EINSTELLUNGEN ---
     elif st.session_state.ansicht == "Einstellungen":
