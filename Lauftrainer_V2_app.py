@@ -16,7 +16,7 @@ cookie_manager = stx.CookieManager()
 st.write("") 
 
 st.title("🏃‍♂️🚴 KI Trainer: Strava & Gemini")
-st.caption("🔒 **Version 4.99** – Supabase Cloud (inkl. Einstellungen)")
+st.caption("🔒 **Version 5.00** – Ziel-Setup, Zielpace & VO2max-Glättung")
 
 # ==============================================================================
 # 🧠 SESSION STATE & CLOUD DATABASE (SUPABASE)
@@ -167,7 +167,7 @@ with st.sidebar:
     if st.button("📅 Aktueller Wochenplan", use_container_width=True): st.session_state.ansicht = "Wochenplan"
     if st.button("🏆 Masterplan", use_container_width=True): st.session_state.ansicht = "Masterplan"
     if st.button("👟 Letzte Aktivitäten", use_container_width=True): st.session_state.ansicht = "Aktivitäten"
-    if st.button("⚙️ Trainerinstruktionen & Co.", use_container_width=True): st.session_state.ansicht = "Einstellungen"
+    if st.button("⚙️ Trainerinstruktionen & Setup", use_container_width=True): st.session_state.ansicht = "Einstellungen"
 
     st.divider()
 
@@ -176,6 +176,10 @@ with st.sidebar:
         status = st.session_state.leistungsstatus
         st.caption(f"Letztes Update: {status.get('letztes_update', '---')}")
         st.metric("Geschätzter VO2max", f"⚡ {status.get('vo2max', '---')}")
+        
+        # NEU: VO2max Hinweis Box
+        st.info("ℹ️ **Hinweis:** Dieser Wert ist eine KI-Schätzung. Ein lang anhaltender Anstieg liegt oft an einem anfangs zu gering geschätzten Startwert.")
+        
         st.markdown("**🎯 Laufprognosen:**")
         st.markdown(f"• **5 km:** {status.get('prognose_5k', '---')}")
         st.markdown(f"• **10 km:** {status.get('prognose_10k', '---')}")
@@ -209,6 +213,7 @@ with st.sidebar:
 # 🔑 SCHLEUSE (LOGIN ODER VOLLSTÄNDIGES SETUP ZUM TEILEN)
 # ==============================================================================
 access_token = auth_data.get("access_token")
+gemini_key = auth_data.get("gemini_key")
 
 if not gemini_key or not access_token:
     st.info("👋 Willkommen! Bitte einloggen oder App neu einrichten.")
@@ -278,7 +283,15 @@ else:
     ===WOCHENPLAN_START===\n### 📅 Dein adaptiver Wochenplan\n*Markdown-Plan...*\n===WOCHENPLAN_END===
     """
 
-    trainer_instructions = st.session_state.physio_data.get("instructions", "")
+    # Kontext auslesen für KI
+    ziel_typ = st.session_state.physio_data.get("ziel_typ", "Formaufbau / Allgemein")
+    trainer_instructions = st.session_state.physio_data.get("instructions", "Keine speziellen Anweisungen.")
+    aktueller_vo2max = st.session_state.get('leistungsstatus', {}).get('vo2max', 'Nicht berechnet')
+    
+    ziel_kontext = f"**Trainingsziel:** {ziel_typ}\n"
+    if ziel_typ == "Spezielles Wettkampf-Event":
+        ziel_kontext += f"**Event:** {st.session_state.physio_data.get('event_name', '?')} am {st.session_state.physio_data.get('event_datum', '?')}\n"
+        ziel_kontext += f"**Zielpace:** {st.session_state.physio_data.get('zielpace', '?')}\n"
 
     # --- ANSICHT: WOCHENPLAN ---
     if st.session_state.ansicht == "Wochenplan":
@@ -297,7 +310,17 @@ else:
             if st.button("🔄 Wochenplan & Status aktualisieren", type="primary"):
                 with st.spinner("Berechne adaptiven Wochenplan und speichere in Cloud..."):
                     if load_and_format_strava_data():
-                        prompt = f"{zeit_befehl}\nMasterplan:\n{st.session_state.trainingsplan}\nStrava:\n{st.session_state.strava_context}\nInstruktionen:\n{trainer_instructions}\nAUFGABE: Wochenplan anpassen, Heute/Morgen extrahieren, Status berechnen.\n{output_format_alle}"
+                        prompt = f"""
+                        {zeit_befehl}
+                        Masterplan:\n{st.session_state.trainingsplan}
+                        Strava:\n{st.session_state.strava_context}
+                        Ziel & Event:\n{ziel_kontext}
+                        Instruktionen:\n{trainer_instructions}
+                        
+                        AUFGABE: Wochenplan anpassen, Heute/Morgen extrahieren, Status berechnen.
+                        VO2MAX-REGEL: Der letzte berechnete VO2max war {aktueller_vo2max}. Passe ihn basierend auf den neuen Strava-Daten maximal um +/- 0.5 Punkte an (Glättung). Wenn er 'Nicht berechnet' ist, schätze ihn realistisch ein.
+                        {output_format_alle}
+                        """
                         try:
                             text = ask_gemini_with_retry(client, prompt, st.session_state.doc_images)
                             status_part = text.split("===STATUS_START===")[1].split("===STATUS_END===")[0].strip() if "===STATUS_START===" in text else "{}"
@@ -318,6 +341,9 @@ else:
     # --- ANSICHT: MASTERPLAN ---
     elif st.session_state.ansicht == "Masterplan":
         st.header("🏆 Langfristiger Masterplan")
+        if not st.session_state.physio_data.get("ziel_typ"):
+            st.warning("⚠️ Du hast noch kein Trainingsziel festgelegt. Der Plan wird auf 'Formaufbau' standardisiert. Unter '⚙️ Trainerinstruktionen' kannst du dies ändern.")
+            
         if st.session_state.get("trainingsplan"):
             st.markdown(st.session_state.trainingsplan)
             
@@ -330,11 +356,14 @@ else:
                         Hier sind meine Strava-Daten:
                         {st.session_state.strava_context}
                         
+                        Ziel & Event-Kontext:
+                        {ziel_kontext}
+                        
                         Instruktionen:
                         {trainer_instructions}
                         
                         AUFGABE:
-                        Erstelle AUSSCHLIESSLICH den großen, langfristigen Masterplan im Markdown-Format. Fasse dich prägnant, konzentriere dich auf die Wochenstruktur, vermeide lange Romane. Keine Wochenpläne, keine JSON-Daten.
+                        Erstelle AUSSCHLIESSLICH den großen, langfristigen Masterplan im Markdown-Format. Richte den Plan zwingend auf das angegebene Trainingsziel aus! Fasse dich prägnant, konzentriere dich auf die Wochenstruktur.
                         """
                         mp_part = ask_gemini_with_retry(client, prompt_master, st.session_state.doc_images)
                     
@@ -342,13 +371,15 @@ else:
                         prompt_woche = f"""
                         {zeit_befehl}
                         Basierend auf diesem Masterplan:\n{mp_part}
-                        
                         Strava-Daten:\n{st.session_state.strava_context}
+                        Ziel & Event:\n{ziel_kontext}
                         
                         AUFGABE:
                         1. Erstelle den adaptiven Wochenplan für den Rest DIESER Woche.
                         2. Extrahiere die heutige und morgige Einheit.
                         3. Berechne den Leistungszustand.
+                        
+                        VO2MAX-REGEL: Der letzte berechnete VO2max war {aktueller_vo2max}. Passe ihn basierend auf den neuen Strava-Daten maximal um +/- 0.5 Punkte an (Glättung). Wenn er 'Nicht berechnet' ist, schätze ihn realistisch ein.
                         
                         {output_format_alle}
                         """
@@ -381,23 +412,42 @@ else:
 
     # --- ANSICHT: EINSTELLUNGEN ---
     elif st.session_state.ansicht == "Einstellungen":
-        st.header("⚙️ Trainerinstruktionen & Physiologie")
-        new_inst = st.text_area("Anweisungen für die KI", value=st.session_state.physio_data.get("instructions", ""), height=200)
+        st.header("⚙️ Setup: Ziele & Instruktionen")
         
-        st.write("ℹ️ *Hier können aktuelle physiologische Werte, sofern bekannt, eingetragen werden. Falls diese nicht eingetragen werden, werden diese automatisch berechnet.*")
+        # NEU: Das strukturierte Ziel-Setup
+        st.subheader("🎯 Dein Hauptziel")
+        ziel_optionen = ["Spezielles Wettkampf-Event", "Formaufbau", "Formerhalt"]
+        aktuelles_ziel = st.session_state.physio_data.get("ziel_typ", "Formaufbau")
+        index_ziel = ziel_optionen.index(aktuelles_ziel) if aktuelles_ziel in ziel_optionen else 1
         
-        c_v, c_l, c_b = st.columns(3)
-        with c_v: new_v = st.text_input("VO2max", value=st.session_state.physio_data.get("vo2max", ""))
-        with c_l: new_l = st.text_input("Laktat", value=st.session_state.physio_data.get("laktat", ""))
-        with c_b: new_b = st.text_input("Belastung", value=st.session_state.physio_data.get("belastung", ""))
-        if st.button("💾 In der Cloud speichern"):
-            st.session_state.physio_data.update({"instructions": new_inst, "vo2max": new_v, "laktat": new_l, "belastung": new_b})
+        new_ziel_typ = st.radio("Was ist dein aktueller Fokus?", ziel_optionen, index=index_ziel)
+        
+        new_event_name = st.session_state.physio_data.get("event_name", "")
+        new_event_datum = st.session_state.physio_data.get("event_datum", "")
+        new_zielpace = st.session_state.physio_data.get("zielpace", "")
+        
+        if new_ziel_typ == "Spezielles Wettkampf-Event":
+            st.markdown("Bitte gib die Details für dein Event ein:")
+            c_e, c_d, c_p = st.columns(3)
+            with c_e: new_event_name = st.text_input("Event-Name (z.B. Berlin Marathon)", value=new_event_name)
+            with c_d: new_event_datum = st.text_input("Datum (z.B. 25.09.2026)", value=new_event_datum)
+            with c_p: new_zielpace = st.text_input("Zielpace (z.B. 5:15 min/km)", value=new_zielpace)
+        
+        st.subheader("👨‍🏫 Spezifische Trainerinstruktionen")
+        new_inst = st.text_area("Hier kannst du der KI besondere Vorlieben, Einschränkungen oder Trainingstage mitteilen:", 
+                                value=st.session_state.physio_data.get("instructions", ""), height=150)
+        
+        st.write("---")
+        if st.button("💾 Setup & Instruktionen in der Cloud speichern", type="primary"):
+            st.session_state.physio_data.update({
+                "ziel_typ": new_ziel_typ,
+                "event_name": new_event_name,
+                "event_datum": new_event_datum,
+                "zielpace": new_zielpace,
+                "instructions": new_inst
+            })
             save_all_to_supabase()
-            st.success("Erfolgreich in Supabase gespeichert!")
-            
-        st.subheader("📄 Hintergrundwissen (Dateien)")
-        uploaded_files = st.file_uploader("Lade PDFs, Bilder oder Texte hoch", accept_multiple_files=True)
-        if uploaded_files: st.success("Dateien im temporären Speicher abgelegt.")
+            st.success("Erfolgreich in Supabase für dein Profil gespeichert!")
 
     # ==============================================================================
     # 💬 CHAT-INTERFAZ (COACH TALK)
@@ -413,7 +463,7 @@ else:
         with st.chat_message("assistant"):
             with st.spinner("Coach überlegt..."):
                 try:
-                    resp = ask_gemini_with_retry(client, f"{zeit_befehl}\nPlan:\n{st.session_state.get('wochenplan')}\nFrage: {user_input}")
+                    resp = ask_gemini_with_retry(client, f"{zeit_befehl}\nPlan:\n{st.session_state.get('wochenplan')}\nZiel: {ziel_kontext}\nFrage: {user_input}")
                     st.markdown(resp)
                     st.session_state.messages.append({"role": "assistant", "content": resp})
                 except Exception as e: st.error("Server-Fehler. Bitte später noch einmal probieren.")
