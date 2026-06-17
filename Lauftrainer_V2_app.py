@@ -86,9 +86,10 @@ def save_all_to_supabase(plan_text=None, woche_text=None, status_json=None, heut
         for k, v in daten_aktuell.items():
             supabase.table("trainer_daten").delete().eq("username", username).eq("schluessel", k).execute()
             supabase.table("trainer_daten").insert({"username": username, "schluessel": k, "wert": v}).execute()
+        return True    
     except Exception as e:
         st.error(f"Fehler beim Speichern in der Cloud-Datenbank: {e}")
-
+        return False
 if gemini_key := auth_data.get("gemini_key"):
     if "trainingsplan" not in st.session_state:
         load_all_from_supabase()
@@ -451,8 +452,8 @@ else:
                 "distanz": new_distanz,
                 "zielzeit": new_zielzeit
             })
-            save_all_to_supabase()
-            st.success("Erfolgreich in Supabase für dein Profil gespeichert!")
+            if save_all_to_supabase():
+                st.success("Erfolgreich in Supabase für dein Profil gespeichert!")
 
     # ==============================================================================
     # 💬 CHAT-INTERFAZ (COACH TALK)
