@@ -155,8 +155,8 @@ def ask_gemini_with_retry(client, prompt, images=[], max_retries=3):
     
     # NEU: Der KI genau sagen, was die Anhänge bedeuten!
     if st.session_state.get("gym_images"):
-        prompt += "\n\n⚠️ WICHTIGER HINWEIS ZU DEN BILDERN: Die angehängten Bilder zeigen meine zusätzlichen Fitnessstudio-Aktivitäten. Berücksichtige diese bei der Berechnung der akuten Belastung und der Erholungszeiten!"
-        
+        prompt += "\n\n⚠️ WICHTIGER HINWEIS ZU DEN BILDERN: Die angehängten Bilder zeigen zusätzliche Krafttrainingseinheiten inklusive verbrauchter Kalorien und spezifischer Übungen (siehe extrahierte Daten in den Aktivitäten). Berücksichtige diese Übungen und die zusätzliche muskuläre Belastung exakt bei der Regeneration und der Anpassung der kommenden Laufeinheiten im Wochenplan!"
+    
     if st.session_state.get("plan_images") or st.session_state.get("doc_texts"):
         prompt += "\n\n⚠️ WICHTIGER HINWEIS ZU DEN DOKUMENTEN: Die angehängten Dokumente (Texte/Bilder) sind meine bisherigen Trainingspläne oder sportlichen Vorgaben. Nutze diese als starke Orientierung oder Basis für deine eigene Planung!"
 
