@@ -150,13 +150,18 @@ def load_and_format_strava_data():
         return False
     except: return False
 
-ddef ask_gemini_with_retry(client, prompt, images=[], max_retries=3):
-    # Sammelt automatisch alle hochgeladenen Bilder aus beiden Bereichen ein
+def ask_gemini_with_retry(client, prompt, images=[], max_retries=3):
     alle_bilder = images + st.session_state.get("gym_images", []) + st.session_state.get("plan_images", [])
     
-    # Hängt eventuelle Texte aus PDFs unten an den Prompt an
+    # NEU: Der KI genau sagen, was die Anhänge bedeuten!
+    if st.session_state.get("gym_images"):
+        prompt += "\n\n⚠️ WICHTIGER HINWEIS ZU DEN BILDERN: Die angehängten Bilder zeigen meine zusätzlichen Fitnessstudio-Aktivitäten. Berücksichtige diese bei der Berechnung der akuten Belastung und der Erholungszeiten!"
+        
+    if st.session_state.get("plan_images") or st.session_state.get("doc_texts"):
+        prompt += "\n\n⚠️ WICHTIGER HINWEIS ZU DEN DOKUMENTEN: Die angehängten Dokumente (Texte/Bilder) sind meine bisherigen Trainingspläne oder sportlichen Vorgaben. Nutze diese als starke Orientierung oder Basis für deine eigene Planung!"
+
     if st.session_state.get("doc_texts"):
-        prompt += "\n\nZusätzliches Hintergrundwissen (aus PDFs):\n" + "\n".join(st.session_state.doc_texts)
+        prompt += "\n\nHier ist der Text aus den hochgeladenen PDFs:\n" + "\n".join(st.session_state.doc_texts)
         
     last_error = None
     for attempt in range(max_retries):
