@@ -450,7 +450,8 @@ else:
                 "event_name": new_event_name,
                 "event_datum": new_event_datum,
                 "distanz": new_distanz,
-                "zielzeit": new_zielzeit
+                "zielzeit": new_zielzeit,
+                "instructions": new_inst
             })
             if save_all_to_supabase():
                 st.success("Erfolgreich in Supabase für dein Profil gespeichert!")
