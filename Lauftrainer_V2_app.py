@@ -6,24 +6,20 @@ import requests
 from google import genai 
 import time 
 from datetime import datetime 
-import PyPDF2 
-import extra_streamlit_components as stx 
 import json 
 from PIL import Image 
-import pandas as pd
+from supabase import create_client, Client
+import extra_streamlit_components as stx 
 
 st.set_page_config(page_title="KI Trainer", layout="centered")
 cookie_manager = stx.CookieManager()
 st.write("") 
 
 st.title("🏃‍♂️🚴 KI Trainer: Strava & Gemini")
-st.caption("🔒 **Version 4.97** – Google Sheets Cloud-Datenbank Aktiv")
-
-# URL deiner Google Tabelle (wird für die st.connection genutzt)
-SHEET_URL = "https://docs.google.com/spreadsheets/d/15gW062PQ1j7bhUaWqzgXEmXqJX5fDE8O9UM3K4CBFrM/edit?usp=sharing"
+st.caption("🔒 **Version 4.99** – Supabase Cloud (inkl. Einstellungen)")
 
 # ==============================================================================
-# 🧠 SESSION STATE & CLOUD DATABASE (GOOGLE SHEETS)
+# 🧠 SESSION STATE & CLOUD DATABASE (SUPABASE)
 # ==============================================================================
 if "messages" not in st.session_state: st.session_state.messages = []
 if "strava_context" not in st.session_state: st.session_state.strava_context = ""
@@ -32,27 +28,24 @@ if "doc_names" not in st.session_state: st.session_state.doc_names = []
 if "doc_texts" not in st.session_state: st.session_state.doc_texts = []
 if "doc_images" not in st.session_state: st.session_state.doc_images = []
 if "ansicht" not in st.session_state: st.session_state.ansicht = "Wochenplan"
+if "physio_data" not in st.session_state: st.session_state.physio_data = {}
 
 auth_cookie = cookie_manager.get("auth_paket")
 auth_data = json.loads(auth_cookie) if isinstance(auth_cookie, str) else (auth_cookie or {})
 if "temp_auth_data" in st.session_state: auth_data = st.session_state.temp_auth_data
 
-physio_cookie = cookie_manager.get("physio_paket")
-physio_data = json.loads(physio_cookie) if isinstance(physio_cookie, str) else (cookie_manager.get("physio_paket") or {})
+try:
+    supabase: Client = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
+except Exception as e:
+    st.error("Datenbankverbindung konnte nicht hergestellt werden. Bitte Secrets prüfen.")
 
-# --- FUNKTIONEN FÜR DIE CLOUD-DATENBANK (GOOGLE SHEETS) ---
-def load_all_from_google_sheets():
-    """Lädt die gespeicherten Pläne für den aktuellen Nutzer aus Google Sheets"""
+def load_all_from_supabase():
     username = auth_data.get("master_pw", "default_user")
     try:
-        # Verbindung zum Sheet herstellen via integrierter gsheets-Schnittstelle
-        conn = st.connection("gsheets", type=st.connections.GSheetsConnection)
-        df = conn.read(spreadsheet=SHEET_URL, ttl="5s", sheet="daten")
-        
-        if df is not None and not df.empty:
-            # Filtere Daten für den aktuellen User
-            user_df = df[df["username"] == username]
-            for _, row in user_df.iterrows():
+        response = supabase.table("trainer_daten").select("schluessel, wert").eq("username", username).execute()
+        rows = response.data
+        if rows:
+            for row in rows:
                 schluessel = row["schluessel"]
                 wert = row["wert"]
                 
@@ -63,11 +56,13 @@ def load_all_from_google_sheets():
                 elif schluessel == "leistungsstatus":
                     try: st.session_state.leistungsstatus = json.loads(wert)
                     except: pass
+                elif schluessel == "physio_paket":
+                    try: st.session_state.physio_data = json.loads(wert)
+                    except: pass
     except Exception as e:
-        pass # Falls das Sheet noch komplett leer ist, ignorieren
+        pass
 
-def save_all_to_google_sheets(plan_text=None, woche_text=None, status_json=None, heute_text=None, morgen_text=None):
-    """Speichert die neuen Pläne direkt in das Google Sheet"""
+def save_all_to_supabase(plan_text=None, woche_text=None, status_json=None, heute_text=None, morgen_text=None):
     if plan_text is not None: st.session_state.trainingsplan = plan_text
     if woche_text is not None: st.session_state.wochenplan = woche_text
     if status_json is not None: st.session_state.leistungsstatus = status_json
@@ -77,38 +72,24 @@ def save_all_to_google_sheets(plan_text=None, woche_text=None, status_json=None,
     username = auth_data.get("master_pw", "default_user")
     
     try:
-        conn = st.connection("gsheets", type=st.connections.GSheetsConnection)
-        
-        # Aktuellen Stand holen, um Zeilen zu überschreiben oder anzufügen
-        try: df = conn.read(spreadsheet=SHEET_URL, sheet="daten")
-        except: df = pd.DataFrame(columns=["username", "schluessel", "wert"])
-        
-        if df is None: df = pd.DataFrame(columns=["username", "schluessel", "wert"])
-        
         daten_aktuell = {
             "trainingsplan": st.session_state.get("trainingsplan", ""),
             "wochenplan": st.session_state.get("wochenplan", ""),
             "heute_training": st.session_state.get("heute_training", ""),
             "morgen_training": st.session_state.get("morgen_training", ""),
-            "leistungsstatus": json.dumps(st.session_state.get("leistungsstatus", {}))
+            "leistungsstatus": json.dumps(st.session_state.get("leistungsstatus", {})),
+            "physio_paket": json.dumps(st.session_state.get("physio_data", {}))
         }
         
         for k, v in daten_aktuell.items():
-            # Falls Zeile existiert, löschen (Überschreiben-Logik)
-            df = df[~((df["username"] == username) & (df["schluessel"] == k))]
-            # Neue Zeile anhängen
-            neue_zeile = pd.DataFrame([{"username": username, "schluessel": k, "wert": v}])
-            df = pd.concat([df, neue_zeile], ignore_index=True)
-            
-        # Zurück in Google Sheets schreiben
-        conn.update(spreadsheet=SHEET_URL, data=df, sheet="daten")
+            supabase.table("trainer_daten").delete().eq("username", username).eq("schluessel", k).execute()
+            supabase.table("trainer_daten").insert({"username": username, "schluessel": k, "wert": v}).execute()
     except Exception as e:
-        st.error(f"Fehler beim Speichern in der Google Cloud-Datenbank: {e}")
+        st.error(f"Fehler beim Speichern in der Cloud-Datenbank: {e}")
 
-# Initialer Cloud-Ladevorgang, wenn User eingeloggt ist
 if gemini_key := auth_data.get("gemini_key"):
     if "trainingsplan" not in st.session_state:
-        load_all_from_google_sheets()
+        load_all_from_supabase()
 
 # ==============================================================================
 # ⚙️ HILFSFUNKTIONEN
@@ -187,17 +168,6 @@ with st.sidebar:
     if st.button("🏆 Masterplan", use_container_width=True): st.session_state.ansicht = "Masterplan"
     if st.button("👟 Letzte Aktivitäten", use_container_width=True): st.session_state.ansicht = "Aktivitäten"
     if st.button("⚙️ Trainerinstruktionen & Co.", use_container_width=True): st.session_state.ansicht = "Einstellungen"
-    
-    backup = {
-        "trainingsplan": st.session_state.get("trainingsplan", ""), 
-        "wochenplan": st.session_state.get("wochenplan", ""), 
-        "leistungsstatus": st.session_state.get("leistungsstatus", {}), 
-        "heute_training": st.session_state.get("heute_training", ""), 
-        "morgen_training": st.session_state.get("morgen_training", "")
-    }
-    st.download_button("💾 Daten sichern (Export)", data=json.dumps(backup, indent=2), file_name="trainer_backup.json", mime="application/json", use_container_width=True)
-    
-    if st.button("📂 Daten wiederherstellen", use_container_width=True): st.session_state.ansicht = "Wiederherstellen"
 
     st.divider()
 
@@ -231,8 +201,6 @@ with st.sidebar:
     st.divider()
     if st.button("⚠️ App-Reset (Alle Daten löschen)", use_container_width=True, type="primary"):
         cookie_manager.delete("auth_paket")
-        cookie_manager.delete("physio_paket")
-        # Cloud-Reset wird über die Tabelle geregelt, Cookies aufräumen reicht hier
         st.session_state.clear()
         time.sleep(0.5)
         st.rerun()
@@ -310,8 +278,7 @@ else:
     ===WOCHENPLAN_START===\n### 📅 Dein adaptiver Wochenplan\n*Markdown-Plan...*\n===WOCHENPLAN_END===
     """
 
-    trainer_instructions = physio_data.get("instructions", "")
-    vo2max = physio_data.get("vo2max", "")
+    trainer_instructions = st.session_state.physio_data.get("instructions", "")
 
     # --- ANSICHT: WOCHENPLAN ---
     if st.session_state.ansicht == "Wochenplan":
@@ -328,7 +295,7 @@ else:
         if st.session_state.get("wochenplan"):
             st.markdown(st.session_state.wochenplan)
             if st.button("🔄 Wochenplan & Status aktualisieren", type="primary"):
-                with st.spinner("Berechne adaptiven Wochenplan und speichere in Google Cloud..."):
+                with st.spinner("Berechne adaptiven Wochenplan und speichere in Cloud..."):
                     if load_and_format_strava_data():
                         prompt = f"{zeit_befehl}\nMasterplan:\n{st.session_state.trainingsplan}\nStrava:\n{st.session_state.strava_context}\nInstruktionen:\n{trainer_instructions}\nAUFGABE: Wochenplan anpassen, Heute/Morgen extrahieren, Status berechnen.\n{output_format_alle}"
                         try:
@@ -341,8 +308,7 @@ else:
                             s_json = json.loads(status_part) if "vo2max" in status_part else {}
                             s_json["letztes_update"] = datetime.now().strftime("%d.%m.%Y")
                             
-                            # Direkt in Google Sheets sichern
-                            save_all_to_google_sheets(woche_text=w_part, status_json=s_json, heute_text=h_part, morgen_text=m_part)
+                            save_all_to_supabase(woche_text=w_part, status_json=s_json, heute_text=h_part, morgen_text=m_part)
                             st.rerun()
                         except Exception as e: st.error(f"Fehler bei KI-Verarbeitung: {e}")
                     else: st.error("Konnte Strava-Daten nicht laden.")
@@ -396,9 +362,8 @@ else:
                         s_json = json.loads(status_part) if "vo2max" in status_part else {}
                         s_json["letztes_update"] = datetime.now().strftime("%d.%m.%Y")
                         
-                        # In Google Sheets sichern
-                        save_all_to_google_sheets(plan_text=mp_part, woche_text=w_part, status_json=s_json, heute_text=h_part, morgen_text=m_part)
-                        st.success("Plan erfolgreich erstellt und in Google Tabelle gesichert!")
+                        save_all_to_supabase(plan_text=mp_part, woche_text=w_part, status_json=s_json, heute_text=h_part, morgen_text=m_part)
+                        st.success("Plan erfolgreich erstellt und in Supabase gesichert!")
                         st.rerun()
                 except Exception as e: 
                     st.error(f"Fehler bei KI-Verarbeitung: {e}")
@@ -417,31 +382,22 @@ else:
     # --- ANSICHT: EINSTELLUNGEN ---
     elif st.session_state.ansicht == "Einstellungen":
         st.header("⚙️ Trainerinstruktionen & Physiologie")
-        new_inst = st.text_area("Anweisungen für die KI", value=trainer_instructions, height=200)
+        new_inst = st.text_area("Anweisungen für die KI", value=st.session_state.physio_data.get("instructions", ""), height=200)
         
         st.write("ℹ️ *Hier können aktuelle physiologische Werte, sofern bekannt, eingetragen werden. Falls diese nicht eingetragen werden, werden diese automatisch berechnet.*")
         
         c_v, c_l, c_b = st.columns(3)
-        with c_v: new_v = st.text_input("VO2max", value=physio_data.get("vo2max", ""))
-        with c_l: new_l = st.text_input("Laktat", value=physio_data.get("laktat", ""))
-        with c_b: new_b = st.text_input("Belastung", value=physio_data.get("belastung", ""))
-        if st.button("💾 Alle Einstellungen speichern"):
-            physio_data.update({"instructions": new_inst, "vo2max": new_v, "laktat": new_l, "belastung": new_b})
-            cookie_manager.set("physio_paket", json.dumps(physio_data))
-            st.success("Gespeichert!")
+        with c_v: new_v = st.text_input("VO2max", value=st.session_state.physio_data.get("vo2max", ""))
+        with c_l: new_l = st.text_input("Laktat", value=st.session_state.physio_data.get("laktat", ""))
+        with c_b: new_b = st.text_input("Belastung", value=st.session_state.physio_data.get("belastung", ""))
+        if st.button("💾 In der Cloud speichern"):
+            st.session_state.physio_data.update({"instructions": new_inst, "vo2max": new_v, "laktat": new_l, "belastung": new_b})
+            save_all_to_supabase()
+            st.success("Erfolgreich in Supabase gespeichert!")
             
         st.subheader("📄 Hintergrundwissen (Dateien)")
         uploaded_files = st.file_uploader("Lade PDFs, Bilder oder Texte hoch", accept_multiple_files=True)
         if uploaded_files: st.success("Dateien im temporären Speicher abgelegt.")
-
-    # --- ANSICHT: WIEDERHERSTELLEN ---
-    elif st.session_state.ansicht == "Wiederherstellen":
-        st.header("📂 Daten wiederherstellen (Import)")
-        upl = st.file_uploader("Backup-Datei hochladen", type=["json"])
-        if upl and st.button("🔄 Einspielen"):
-            b = json.load(upl)
-            save_all_to_google_sheets(b.get("trainingsplan"), b.get("wochenplan"), b.get("leistungsstatus"), b.get("heute_training"), b.get("morgen_training"))
-            st.success("Geladen!"); time.sleep(0.5); st.session_state.ansicht = "Wochenplan"; st.rerun()
 
     # ==============================================================================
     # 💬 CHAT-INTERFAZ (COACH TALK)
