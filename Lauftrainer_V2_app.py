@@ -433,10 +433,10 @@ else:
         if new_ziel_typ == "Spezielles Wettkampf-Event":
             st.markdown("Bitte gib die Details für dein Event ein:")
             c_e, c_d, c_di, c_z = st.columns(4)
-            with c_e: new_event_name = st.text_input("Event-Name (z.B. Berlin Marathon)", value=new_event_name)
-            with c_d: new_event_datum = st.text_input("Datum (z.B. 25.09.2026)", value=new_event_datum)
-            with c_di: new_distanz = st.text_input("Distanz (z.B. 42,2 km oder 50 km)", value=new_distanz)
-            with c_z: new_zielzeit = st.text_input("Zielzeit (z.B. 3:45:00)", value=new_zielzeit)
+            with c_e: new_event_name = st.text_input("Event-Name", value=new_event_name)
+            with c_d: new_event_datum = st.text_input("Datum", value=new_event_datum)
+            with c_di: new_distanz = st.text_input("Distanz", value=new_distanz)
+            with c_z: new_zielzeit = st.text_input("Zielzeit", value=new_zielzeit)
         
         st.subheader("👨‍🏫 Spezifische Trainerinstruktionen")
         new_inst = st.text_area("Hier kannst du der KI besondere Vorlieben, Einschränkungen oder Trainingstage mitteilen:", 
