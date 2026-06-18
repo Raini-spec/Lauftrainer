@@ -144,6 +144,11 @@ def load_and_format_strava_data():
                         except: dt_str = date
                         last_ten.append(f"**{dt_str}** | {t_de}: {d:.1f} km *({info})*")
                         
+                # NEU: Gym-Historie für die KI an die Strava-Daten anhängen!
+                gym_hist = st.session_state.physio_data.get("gym_history", [])
+                if gym_hist:
+                    data += "\n--- MANUELLE GYM-EINHEITEN ---\n" + "\n".join(gym_hist)
+                        
                 st.session_state.strava_context = data
                 st.session_state.letzte_10_aktivitaeten = last_ten
                 return True
@@ -422,11 +427,17 @@ else:
                 st.error("Konnte Strava-Daten nicht laden.")
 
     # --- ANSICHT: AKTIVITÄTEN ---
+    # --- ANSICHT: AKTIVITÄTEN ---
     elif st.session_state.ansicht == "Aktivitäten":
         st.header("👟 Deine Aktivitäten & Logbuch")
         
-        # 1. Die Strava-Liste
         if load_and_format_strava_data():
+            # NEU: Zeige zuerst die dauerhaft gespeicherten Studio-Trainings (in Grün)
+            gym_hist = st.session_state.physio_data.get("gym_history", [])
+            for g in reversed(gym_hist[-5:]): # Die letzten 5 oben anzeigen
+                st.success(f"🏋️‍♂️ {g}")
+                
+            # Danach die blauen Strava-Aktivitäten
             for act in st.session_state.letzte_10_aktivitaeten:
                 st.info(act)
         else:
@@ -434,7 +445,6 @@ else:
             
         st.divider()
         
-        # 2. Das interaktive Upload-Logbuch
         st.subheader("🏋️‍♂️ Studio-Training & Anmerkungen")
         
         with st.form("gym_upload_form", clear_on_submit=True):
@@ -446,11 +456,9 @@ else:
             if submit_btn and gym_uploads:
                 st.session_state.gym_images = [Image.open(f) for f in gym_uploads[:5]]
                 
-                # Wir hängen deine Anmerkung direkt dauerhaft an die Trainerinstruktionen an!
+                alte_inst = st.session_state.physio_data.get("instructions", "")
                 if nutzer_anmerkung:
-                    alte_inst = st.session_state.physio_data.get("instructions", "")
                     st.session_state.physio_data["instructions"] = f"{alte_inst}\n\n[Studio-Training Log]: {nutzer_anmerkung}"
-                    save_all_to_supabase() # Direkt in der Cloud sichern
                 
                 with st.spinner("🤖 Gemini liest das Bild aus..."):
                     for img in st.session_state.gym_images:
@@ -463,14 +471,70 @@ else:
                             zusatz = f" 💡 *{nutzer_anmerkung}*" if nutzer_anmerkung else ""
                             eintrag = f"{ergebnis.strip()}{zusatz}"
                             
-                            # Sofort oben in der Aktivitäten-Liste anzeigen
-                            if eintrag not in st.session_state.letzte_10_aktivitaeten:
-                                st.session_state.letzte_10_aktivitaeten.insert(0, eintrag)
+                            # NEU: Das Training dauerhaft in die Cloud-Historie speichern!
+                            if "gym_history" not in st.session_state.physio_data:
+                                st.session_state.physio_data["gym_history"] = []
+                            st.session_state.physio_data["gym_history"].append(eintrag)
+                            
                         except: pass
-                
-                st.success("✅ Erfasst! Bild und Anmerkung wurden für die KI verarbeitet.")
+                        
+                save_all_to_supabase() 
+                st.success("✅ Erfasst! Bild und Anmerkung wurden für die KI verarbeitet und gespeichert.")
                 time.sleep(2)
                 st.rerun()
+                
+        st.write("---")
+        
+        # NEU: Die manuelle Eingabemaske zum Aufklappen
+        with st.expander("✍️ Manuelle Aktivität hinzufügen (ohne Bild)"):
+            with st.form("manual_gym_form", clear_on_submit=True):
+                c_datum, c_sport = st.columns(2)
+                # Nimmt als Standardwert automatisch das heutige Datum
+                with c_datum: m_datum = st.text_input("Datum (z.B. 18.06.2026)", value=datetime.now().strftime("%d.%m.%Y"))
+                with c_sport: m_sport = st.selectbox("Sportart / Aktivität", ["Krafttraining", "Yoga / Mobility", "Schwimmen", "Wandern", "Ski / Wintersport", "Alltag / Sonstiges"])
+                
+                c_dauer, c_kcal = st.columns(2)
+                with c_dauer: m_dauer = st.text_input("Dauer (z.B. 45 Min)")
+                with c_kcal: m_kcal = st.text_input("Kalorien (optional)")
+                
+                m_notiz = st.text_input("Notiz / Details (z.B. 'Fokus auf Beine und Core')")
+                
+                if st.form_submit_button("Aktivität speichern"):
+                    # Textbausteine clever zusammensetzen
+                    kcal_text = f" (*{m_kcal} kcal*)" if m_kcal else ""
+                    dauer_text = f", {m_dauer}" if m_dauer else ""
+                    notiz_text = f" - {m_notiz}" if m_notiz else ""
+                    
+                    neuer_eintrag = f"**{m_datum}** | {m_sport}{dauer_text}{notiz_text}{kcal_text}"
+                    
+                    # In die dauerhafte Cloud-Historie schieben
+                    if "gym_history" not in st.session_state.physio_data:
+                        st.session_state.physio_data["gym_history"] = []
+                    st.session_state.physio_data["gym_history"].append(neuer_eintrag)
+                    
+                    save_all_to_supabase()
+                    st.success("✅ Manuelle Aktivität gespeichert!")
+                    time.sleep(1)
+                    st.rerun()
+
+    with st.expander("🤖 Workout-Analyse & Coach-Feedback"):
+            with st.form("workout_analysis_form"):
+                analysis_upload = st.file_uploader("Screenshot der Trainingseinheit hochladen", type=["png", "jpg", "jpeg"], key="analysis_upload")
+                submit_analysis = st.form_submit_button("Workout tiefenanalysieren")
+                
+                if submit_analysis and analysis_upload:
+                    img = Image.open(analysis_upload)
+                    with st.spinner("Coach analysiert deine Übungen..."):
+                        feedback_prompt = """Du bist ein erfahrener Fitness-Coach. Analysiere die Übungen, Sätze und Gewichte auf diesem Screenshot im Detail.
+                        1. Welche Muskelgruppen oder Reize wurden primär gesetzt (z.B. Kraft, Kraftausdauer, Mobility)?
+                        2. Gib ein kurzes, prägnantes Feedback (max. 4 Sätze) zur Intensität/Balance und einen konkreten Tipp für das nächste Mal."""
+                        
+                        try:
+                            feedback = ask_gemini_with_retry(client, feedback_prompt, [img])
+                            st.markdown("### 📋 Dein Coach-Feedback:")
+                            st.info(feedback)
+                        except Exception as e:
+                            st.error(f"Fehler bei der Analyse: {e}")
 
     # --- ANSICHT: EINSTELLUNGEN ---
     elif st.session_state.ansicht == "Einstellungen":
