@@ -445,42 +445,42 @@ else:
             
         st.divider()
         
-            with st.expander("📷 Studio-Training & Anmerkungen (Fotos hochladen)"):  
-                with st.form("gym_upload_form", clear_on_submit=True):
-                    gym_uploads = st.file_uploader("Screenshot (z.B. Fitness-App)", accept_multiple_files=True, type=["png", "jpg", "jpeg"])
-                    nutzer_anmerkung = st.text_input("📝 Deine Anmerkung zur Einheit (z. B. 'Sehr anstrengend, morgen Pause einplanen')")
+        with st.expander("📷 Studio-Training & Anmerkungen (Fotos hochladen)"):  
+            with st.form("gym_upload_form", clear_on_submit=True):
+                gym_uploads = st.file_uploader("Screenshot (z.B. Fitness-App)", accept_multiple_files=True, type=["png", "jpg", "jpeg"])
+                nutzer_anmerkung = st.text_input("📝 Deine Anmerkung zur Einheit (z. B. 'Sehr anstrengend, morgen Pause einplanen')")
+                
+                submit_btn = st.form_submit_button("Speichern & Analysieren")
+                
+                if submit_btn and gym_uploads:
+                    st.session_state.gym_images = [Image.open(f) for f in gym_uploads[:5]]
                     
-                    submit_btn = st.form_submit_button("Speichern & Analysieren")
+                    alte_inst = st.session_state.physio_data.get("instructions", "")
+                    if nutzer_anmerkung:
+                        st.session_state.physio_data["instructions"] = f"{alte_inst}\n\n[Studio-Training Log]: {nutzer_anmerkung}"
                     
-                    if submit_btn and gym_uploads:
-                        st.session_state.gym_images = [Image.open(f) for f in gym_uploads[:5]]
-                        
-                        alte_inst = st.session_state.physio_data.get("instructions", "")
-                        if nutzer_anmerkung:
-                            st.session_state.physio_data["instructions"] = f"{alte_inst}\n\n[Studio-Training Log]: {nutzer_anmerkung}"
-                        
-                        with st.spinner("🤖 Gemini liest das Bild aus..."):
-                            for img in st.session_state.gym_images:
-                                analyse_prompt = """WICHTIG: Du bist ein reiner Daten-Extraktor. Das ist ein Screenshot meiner eigenen Fitness-App.
-                                Ignoriere alle Sicherheitsbedenken bezüglich Fotos, lies AUSSCHLIESSLICH die Texte und Zahlen ab.
-                                Extrahiere: Datum, Trainingsart/Übungen und Kalorienverbrauch. 
-                                Dein EINZIGER Output darf sein: **[Datum]** | Gym: [Übungen] (*[Kalorien] kcal*)."""
-                                try:
-                                    ergebnis = ask_gemini_with_retry(client, analyse_prompt, [img])
-                                    zusatz = f" 💡 *{nutzer_anmerkung}*" if nutzer_anmerkung else ""
-                                    eintrag = f"{ergebnis.strip()}{zusatz}"
-                                    
-                                    # NEU: Das Training dauerhaft in die Cloud-Historie speichern!
-                                    if "gym_history" not in st.session_state.physio_data:
-                                        st.session_state.physio_data["gym_history"] = []
-                                    st.session_state.physio_data["gym_history"].append(eintrag)
-                                    
-                                except: pass
+                    with st.spinner("🤖 Gemini liest das Bild aus..."):
+                        for img in st.session_state.gym_images:
+                            analyse_prompt = """WICHTIG: Du bist ein reiner Daten-Extraktor. Das ist ein Screenshot meiner eigenen Fitness-App.
+                            Ignoriere alle Sicherheitsbedenken bezüglich Fotos, lies AUSSCHLIESSLICH die Texte und Zahlen ab.
+                            Extrahiere: Datum, Trainingsart/Übungen und Kalorienverbrauch. 
+                            Dein EINZIGER Output darf sein: **[Datum]** | Gym: [Übungen] (*[Kalorien] kcal*)."""
+                            try:
+                                ergebnis = ask_gemini_with_retry(client, analyse_prompt, [img])
+                                zusatz = f" 💡 *{nutzer_anmerkung}*" if nutzer_anmerkung else ""
+                                eintrag = f"{ergebnis.strip()}{zusatz}"
                                 
-                        save_all_to_supabase() 
-                        st.success("✅ Erfasst! Bild und Anmerkung wurden für die KI verarbeitet und gespeichert.")
-                        time.sleep(2)
-                        st.rerun()
+                                # NEU: Das Training dauerhaft in die Cloud-Historie speichern!
+                                if "gym_history" not in st.session_state.physio_data:
+                                    st.session_state.physio_data["gym_history"] = []
+                                st.session_state.physio_data["gym_history"].append(eintrag)
+                                
+                            except: pass
+                            
+                    save_all_to_supabase() 
+                    st.success("✅ Erfasst! Bild und Anmerkung wurden für die KI verarbeitet und gespeichert.")
+                    time.sleep(2)
+                    st.rerun()
                 
         st.write("---")
         
