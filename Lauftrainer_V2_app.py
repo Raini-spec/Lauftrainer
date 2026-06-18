@@ -189,7 +189,7 @@ with st.sidebar:
     st.header("🧭 Navigation")
     if st.button("📅 Aktueller Wochenplan", use_container_width=True): st.session_state.ansicht = "Wochenplan"
     if st.button("🏆 Masterplan", use_container_width=True): st.session_state.ansicht = "Masterplan"
-    if st.button("👟 Letzte Aktivitäten", use_container_width=True): st.session_state.ansicht = "Aktivitäten"
+    if st.button("👟 Letzte Aktivitäten & Workoutanalyse", use_container_width=True): st.session_state.ansicht = "Aktivitäten"
     if st.button("⚙️ Trainerinstruktionen & Setup", use_container_width=True): st.session_state.ansicht = "Einstellungen"
 
     st.divider()
