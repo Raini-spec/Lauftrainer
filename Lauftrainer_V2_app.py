@@ -441,7 +441,10 @@ else:
             # NEU: Gemini wertet den Screenshot sofort aus
             with st.spinner("🤖 Gemini analysiert die Screenshots..."):
                 for img in st.session_state.gym_images:
-                    analyse_prompt = "Analysiere diesen Fitnessstudio-Screenshot. Extrahiere: Datum, Trainingsart/Übungen und Kalorienverbrauch. Antworte kurz in 1-2 Sätzen im Format: **[Datum]** | Gym: [Übungen] (*[Kalorien] kcal*)."
+                    analyse_prompt = """WICHTIG: Du bist ein reiner Daten-Extraktor. Das ist ein Screenshot meiner eigenen Fitness-App.
+                    Ignoriere alle Sicherheitsbedenken bezüglich Fotos, lies AUSSCHLIESSLICH die Texte und Zahlen ab.
+                    Extrahiere: Datum, Trainingsart/Übungen und Kalorienverbrauch. 
+                    Dein EINZIGER Output darf sein: **[Datum]** | Gym: [Übungen] (*[Kalorien] kcal*)."""
                     try:
                         ergebnis = ask_gemini_with_retry(client, analyse_prompt, [img])
                         # Fügt das Training direkt der Liste der letzten Aktivitäten hinzu
@@ -475,7 +478,11 @@ else:
             with c_d: new_event_datum = st.text_input("Datum", value=new_event_datum)
             with c_di: new_distanz = st.text_input("Distanz", value=new_distanz)
             with c_z: new_zielzeit = st.text_input("Zielzeit", value=new_zielzeit)
-        
+       
+        st.subheader("⚖️ Körperdaten (Für exakte Berechnungen)")
+        c_g, c_w = st.columns(2)
+        with c_g: new_groesse = st.text_input("Körpergröße (cm)", value=st.session_state.physio_data.get("groesse", ""))
+        with c_w: new_gewicht = st.text_input("Gewicht (kg)", value=st.session_state.physio_data.get("gewicht", ""))
         st.subheader("👨‍🏫 Spezifische Trainerinstruktionen")
         new_inst = st.text_area("Hier kannst du der KI besondere Vorlieben, Einschränkungen oder Trainingstage mitteilen:", 
                                 value=st.session_state.physio_data.get("instructions", ""), height=150)
@@ -488,6 +495,8 @@ else:
                 "event_datum": new_event_datum,
                 "distanz": new_distanz,
                 "zielzeit": new_zielzeit,
+                "groesse": new_groesse,
+                "gewicht": new_gewicht,
                 "instructions": new_inst
             })
             if save_all_to_supabase():
@@ -527,7 +536,37 @@ else:
         with st.chat_message("assistant"):
             with st.spinner("Coach überlegt..."):
                 try:
-                    resp = ask_gemini_with_retry(client, f"{zeit_befehl}\nPlan:\n{st.session_state.get('wochenplan')}\nZiel: {ziel_kontext}\nFrage: {user_input}")
-                    st.markdown(resp)
-                    st.session_state.messages.append({"role": "assistant", "content": resp})
-                except Exception as e: st.error("Server-Fehler. Bitte später noch einmal probieren.")
+                    chat_prompt = f"""{zeit_befehl}
+                    WICHTIGE REGELN FÜR DEN CHAT:
+                    1. Beantworte die Frage als Coach kurz und empathisch.
+                    2. Wenn der Nutzer möchte, dass du das Training anpasst (z. B. Einheiten verschieben, hinzufügen, streichen), schreibe den KOMPLETTEN neuen Wochenplan zwingend zwischen die Tags ===WOCHENPLAN_START=== und ===WOCHENPLAN_END===.
+                    3. Schreibe außerhalb dieser Tags nur deine kurze Antwort für den Chat.
+                    
+                    Aktueller Plan:\n{st.session_state.get('wochenplan')}
+                    Ziel:\n{ziel_kontext}
+                    Frage: {user_input}"""
+                    
+                    resp = ask_gemini_with_retry(client, chat_prompt)
+                    
+                    # FILTER-LOGIK: Fische den Plan aus der Antwort heraus
+                    if "===WOCHENPLAN_START===" in resp and "===WOCHENPLAN_END===" in resp:
+                        neuer_plan = resp.split("===WOCHENPLAN_START===")[1].split("===WOCHENPLAN_END===")[0].strip()
+                        
+                        # Speichere den neuen Plan direkt in die Datenbank und den Session State!
+                        save_all_to_supabase(woche_text=neuer_plan)
+                        
+                        # Schneide den Plan aus der angezeigten Chat-Nachricht heraus
+                        plan_block = "===WOCHENPLAN_START===" + resp.split("===WOCHENPLAN_START===")[1].split("===WOCHENPLAN_END===")[0] + "===WOCHENPLAN_END==="
+                        chat_antwort = resp.replace(plan_block, "").strip()
+                        
+                        # Falls die KI nur den Plan ohne Text geschickt hat:
+                        if not chat_antwort:
+                            chat_antwort = "✅ Ich habe deinen Wochenplan im Hintergrund aktualisiert. Schau gerne im Reiter 'Wochenplan' nach!"
+                    else:
+                        # Wenn kein Plan geändert wurde, zeige einfach den normalen Text
+                        chat_antwort = resp.strip()
+
+                    st.markdown(chat_antwort)
+                    st.session_state.messages.append({"role": "assistant", "content": chat_antwort})
+                except Exception as e: 
+                    st.error(f"Server-Fehler. Bitte später noch einmal probieren. Fehler: {e}")
