@@ -290,6 +290,7 @@ if not gemini_key or not access_token:
 # 🏃‍♂️ HAUPT-APP BEREICH (DYNAMISCH)
 # ==============================================================================
 else:
+    heute_str = datetime.now().strftime("%A, %d. %B %Y")
     client = genai.Client(api_key=gemini_key)
     if "temp_auth_data" in st.session_state:
         cookie_manager.set("auth_paket", json.dumps(st.session_state.temp_auth_data), key="cookie_set_main_auth")
@@ -336,7 +337,7 @@ else:
                 with st.spinner("Berechne adaptiven Wochenplan und speichere in Cloud..."):
                     if load_and_format_strava_data():
                         prompt = f"""
-                        {zeit_befehl}
+                        ⚠️ WICHTIGER ZEIT-KONTEXT FÜR DIESE PLANUNG: Heute ist {heute_str}. Alle geplanten Trainingseinheiten müssen sich auf dieses Datum beziehen.
                         Masterplan:\n{st.session_state.trainingsplan}
                         Strava:\n{st.session_state.strava_context}
                         Ziel & Event:\n{ziel_kontext}
