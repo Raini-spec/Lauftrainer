@@ -1,7 +1,7 @@
 # ==============================================================================
 # 📦 BIBLIOTHEKEN LADEN (IMPORT-BEREICH)
 # ==============================================================================
-import streamlit as st 
+import streamlit as st
 import requests 
 from google import genai 
 import time 
@@ -189,10 +189,9 @@ with st.sidebar:
     st.header("🧭 Navigation")
     if st.button("📅 Aktueller Wochenplan", use_container_width=True): st.session_state.ansicht = "Wochenplan"
     if st.button("🏆 Masterplan", use_container_width=True): st.session_state.ansicht = "Masterplan"
-    if st.button("📊 Lauf-Statistiken & Prognosen", use_container_width=True): st.session_state.ansicht = "Statistiken"
     if st.button("👟 Letzte Aktivitäten & Workoutanalyse", use_container_width=True): st.session_state.ansicht = "Aktivitäten"
     if st.button("⚙️ Trainerinstruktionen & Setup", use_container_width=True): st.session_state.ansicht = "Einstellungen"
-
+    if st.button("📊 Lauf-Statistiken & Prognosen", use_container_width=True): st.session_state.ansicht = "Statistiken"
     st.divider()
 
     st.header("📊 Leistungszustand")
@@ -428,7 +427,6 @@ else:
                 st.error("Konnte Strava-Daten nicht laden.")
 
     # --- ANSICHT: AKTIVITÄTEN ---
-    # --- ANSICHT: AKTIVITÄTEN ---
     elif st.session_state.ansicht == "Aktivitäten":
         st.header("👟 Deine Aktivitäten & Logbuch")
         
@@ -629,7 +627,7 @@ else:
                 max_dist = 0
                 
                 for line in st.session_state.strava_context.split("\n"):
-                    if "[Lauf]" in line:
+                    if "[Run]" in line or "[Lauf]" in line:
                         try:
                             date_str = line.split("] [")[0].replace("- [", "")
                             act_date = datetime.strptime(date_str, "%Y-%m-%d")
@@ -696,10 +694,9 @@ else:
 
                 else:
                     st.warning("Keine validen Läufe in den letzten 8 Wochen für eine Prognose gefunden.")
-            except Exception as e:
-                st.error(f"Fehler bei der Prognose-Berechnung: {e}")
-        else:
-            st.info("Konnte keine Strava-Daten finden. Lade im Wochenplan einmal neu!")
+                    st.info("💡 **So löst du das:**\n"
+                            "* **Daten abrufen:** Gehe in den Reiter **'Wochenplan'** und klicke auf den Button **'🔄 Wochenplan & Status aktualisieren'**. Das zieht die neuesten Daten von Strava in den App-Speicher.\n"
+                            "* **Distanz:** Für eine sinnvolle Prognose wertet die App nur Läufe über **3 km** Distanz aus.")
     
     # ==============================================================================
     # 💬 CHAT-INTERFAZ (COACH TALK)
