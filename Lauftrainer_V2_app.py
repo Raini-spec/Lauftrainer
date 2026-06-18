@@ -202,7 +202,7 @@ with st.sidebar:
         
         st.info("ℹ️ **Hinweis:** Dieser Wert ist eine KI-Schätzung. Ein lang anhaltender Anstieg liegt oft an einem anfangs zu gering geschätzten Startwert.")
         
-        st.markdown("**🎯 Laufprognosen:**")
+        st.markdown("**🎯 Gemini-Prognosen:**")
         st.markdown(f"🥇 **5 km:** &nbsp;&nbsp; `{status.get('prognose_5k', '---')}`")
         st.markdown(f"🥈 **10 km:** &nbsp; `{status.get('prognose_10k', '---')}`")
         st.markdown(f"🥉 **21 km:** &nbsp; `{status.get('prognose_21k', '---')}`")
