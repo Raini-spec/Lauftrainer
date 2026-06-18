@@ -616,7 +616,8 @@ else:
     # --- ANSICHT: STATISTIKEN & PROGNOSEN ---
     elif st.session_state.ansicht == "Statistiken":
         st.header("📊 Deine Lauf-Prognose (8-Wochen-Trend)")
-        st.info("Die App analysiert hier deine stärksten Paces und deine langen Läufe der letzten 8 Wochen, um deine echte Form zu berechnen. Um eine realistische Prognose zu erhalten, stelle sicher, dass du in den letzten 8 Wochen mindestens ein bis zwei intensive Einheiten oder einen Testlauf absolviert hast.")
+        st.info("Die App analysiert hier deine stärksten Paces und deine langen Läufe der letzten 8 Wochen, um deine echte Form zu berechnen.")
+        st.info("Um eine realistische Prognose zu erhalten, stelle sicher, dass du in den letzten 8 Wochen mind. ein bis zwei intensive Einheiten oder einen Testlauf absolviert hast.")
 
         if st.session_state.strava_context:
             try:
