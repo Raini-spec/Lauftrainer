@@ -5,7 +5,7 @@ import streamlit as st
 import requests 
 from google import genai 
 import time 
-from datetime import datetime 
+from datetime import datetime, timedelta
 import json 
 from PIL import Image 
 from supabase import create_client, Client
@@ -189,6 +189,7 @@ with st.sidebar:
     st.header("🧭 Navigation")
     if st.button("📅 Aktueller Wochenplan", use_container_width=True): st.session_state.ansicht = "Wochenplan"
     if st.button("🏆 Masterplan", use_container_width=True): st.session_state.ansicht = "Masterplan"
+    if st.button("📊 Lauf-Statistiken & Prognosen", use_container_width=True): st.session_state.ansicht = "Statistiken"
     if st.button("👟 Letzte Aktivitäten & Workoutanalyse", use_container_width=True): st.session_state.ansicht = "Aktivitäten"
     if st.button("⚙️ Trainerinstruktionen & Setup", use_container_width=True): st.session_state.ansicht = "Einstellungen"
 
@@ -614,6 +615,92 @@ else:
                     
                     st.success(f"✅ {len(plan_uploads[:5])} Datei(en) im Hintergrund gemerkt!")
 
+    # --- ANSICHT: STATISTIKEN & PROGNOSEN ---
+    elif st.session_state.ansicht == "Statistiken":
+        st.header("📊 Deine Lauf-Prognose (8-Wochen-Trend)")
+        st.info("Die App analysiert hier deine stärksten Paces und deine langen Läufe der letzten 8 Wochen, um deine echte Form zu berechnen.")
+
+        if st.session_state.strava_context:
+            try:
+                # 1. Daten aus Strava-Kontext extrahieren & filtern (nur Läufe, letzte 8 Wochen)
+                acht_wochen_her = datetime.now() - timedelta(weeks=8)
+                all_paces = [] # Pace in s/km
+                long_runs_count = 0
+                max_dist = 0
+                
+                for line in st.session_state.strava_context.split("\n"):
+                    if "[Lauf]" in line:
+                        try:
+                            date_str = line.split("] [")[0].replace("- [", "")
+                            act_date = datetime.strptime(date_str, "%Y-%m-%d")
+                            
+                            if act_date >= acht_wochen_her:
+                                dist = float(line.split(": ")[1].split(" km")[0])
+                                max_dist = max(max_dist, dist)
+                                
+                                if "Pace: " in line:
+                                    pace_str = line.split("Pace: ")[1].split(" min/km")[0]
+                                    m, s = map(int, pace_str.split("."))
+                                    pace_in_seconds = (m * 60) + s
+                                    
+                                    if pace_in_seconds > 180 and dist > 3: # Schneller als 3:00, länger als 3km
+                                        all_paces.append(pace_in_seconds)
+                                        if dist >= 15:
+                                            long_runs_count += 1
+                        except: continue
+
+                # 2. Prognose berechnen
+                if all_paces:
+                    all_paces.sort()
+                    top_x = max(1, int(len(all_paces) * 0.2)) # Die besten 20%
+                    basis_pace_s = sum(all_paces[:top_x]) / top_x
+                    
+                    riegel_slope = 1.07 
+                    endurance_bonus = min(0.05, long_runs_count * 0.006) 
+                    
+                    def get_slope_for_dist(target_dist):
+                        experience_factor = 0
+                        if max_dist < (target_dist * 0.5): experience_factor = 0.02
+                        elif max_dist >= (target_dist * 0.9): experience_factor = -0.01 
+                        return riegel_slope - endurance_bonus + experience_factor
+
+                    slope_5 = get_slope_for_dist(5)
+                    prog_5k_s = basis_pace_s * 5 * (5**0.03) 
+                    
+                    slope_10 = get_slope_for_dist(10)
+                    prog_10k_s = prog_5k_s * (10/5)**slope_10
+                    
+                    slope_21 = get_slope_for_dist(21.1)
+                    prog_21k_s = prog_5k_s * (21.1/5)**slope_21
+                    
+                    def fmt_s(s):
+                        m, s = divmod(int(s), 60)
+                        h, m = divmod(m, 60)
+                        return f"{h:d}:{m:02d}:{s:02d}" if h > 0 else f"{m:d}:{s:02d}"
+
+                    # 3. UI Darstellung
+                    c_info, c_5k, c_10k, c_hm = st.columns([2,1,1,1])
+                    with c_info:
+                        st.markdown(f"""
+                        <div style='background-color: #f0f2f6; padding: 10px; border-radius: 5px; border-left: 5px solid #ff4b4b;'>
+                            <small>Basis (Top 20% Pace):</small><br>
+                            <b>{fmt_s(basis_pace_s)} min/km</b><br>
+                            <small>Lange Läufe (>15km, 8w): <b>{long_runs_count}</b></small><br>
+                            <small>Längster Lauf (8w): <b>{max_dist:.1f} km</b></small>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                    with c_5k: st.metric("5 km", fmt_s(prog_5k_s))
+                    with c_10k: st.metric("10 km", fmt_s(prog_10k_s))
+                    with c_hm: st.metric("Halbmarathon", fmt_s(prog_21k_s))
+
+                else:
+                    st.warning("Keine validen Läufe in den letzten 8 Wochen für eine Prognose gefunden.")
+            except Exception as e:
+                st.error(f"Fehler bei der Prognose-Berechnung: {e}")
+        else:
+            st.info("Konnte keine Strava-Daten finden. Lade im Wochenplan einmal neu!")
+    
     # ==============================================================================
     # 💬 CHAT-INTERFAZ (COACH TALK)
     # ==============================================================================
