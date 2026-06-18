@@ -525,9 +525,20 @@ else:
                     if submit_analysis and analysis_upload:
                         img = Image.open(analysis_upload)
                         with st.spinner("Coach analysiert deine Übungen..."):
-                            feedback_prompt = """Du bist ein erfahrener Fitness-Coach. Analysiere die Übungen, Sätze und Gewichte auf diesem Screenshot im Detail.
-                            1. Welche Muskelgruppen oder Reize wurden primär gesetzt (z.B. Kraft, Kraftausdauer, Mobility)?
-                            2. Gib ein kurzes, prägnantes Feedback (max. 4 Sätze) zur Intensität/Balance und einen konkreten Tipp für das nächste Mal."""
+                            
+                            # HIER KOMMT DEIN NEUER CODE HIN:
+                            aktueller_plan = st.session_state.get('wochenplan', 'Kein Wochenplan vorhanden.')
+                            ziel_kontext = st.session_state.physio_data.get('ziel_typ', 'Allgemeines Training')
+                            
+                            feedback_prompt = f"""Du bist ein erfahrener Fitness-Coach. Analysiere den Screenshot dieser Trainingseinheit und setze sie zwingend in Bezug zu meinem aktuellen Trainingsplan.
+                            
+                            Mein übergeordnetes Ziel: {ziel_kontext}
+                            Mein aktueller Wochenplan:
+                            {aktueller_plan}
+                            
+                            1. Erkenne die Sportart (Kraft, Ausdauer etc.) und bewerte die Metriken.
+                            2. Beurteile konkret: Wie gut passt diese Einheit in meinen aktuellen Wochenplan? War sie für das Ziel zu hart, zu leicht oder genau richtig?
+                            3. Gib ein kurzes, prägnantes Feedback (max. 4 Sätze) und einen Tipp, worauf ich bei den nächsten Einheiten des Plans achten sollte."""
                             
                             try:
                                 feedback = ask_gemini_with_retry(client, feedback_prompt, [img])
