@@ -445,7 +445,9 @@ else:
             
         st.divider()
         
-        st.subheader("🏋️‍♂️ Studio-Training & Anmerkungen")
+        with st.expander("📷 Studio-Training & Anmerkungen (Fotos hochladen)"):
+            with st.form("gym_upload_form", clear_on_submit=True):
+                # ... hier geht dein bisheriger Code normal weiter (gym_uploads etc.)
         
         with st.form("gym_upload_form", clear_on_submit=True):
             gym_uploads = st.file_uploader("Screenshot (z.B. Fitness-App)", accept_multiple_files=True, type=["png", "jpg", "jpeg"])
