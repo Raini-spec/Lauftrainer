@@ -487,54 +487,54 @@ else:
         
         # NEU: Die manuelle Eingabemaske zum Aufklappen
         with st.expander("✍️ Manuelle Aktivität hinzufügen (ohne Bild)"):
-            with st.form("manual_gym_form", clear_on_submit=True):
-                c_datum, c_sport = st.columns(2)
-                # Nimmt als Standardwert automatisch das heutige Datum
-                with c_datum: m_datum = st.text_input("Datum (z.B. 18.06.2026)", value=datetime.now().strftime("%d.%m.%Y"))
-                with c_sport: m_sport = st.selectbox("Sportart / Aktivität", ["Krafttraining", "Yoga / Mobility", "Schwimmen", "Wandern", "Ski / Wintersport", "Alltag / Sonstiges"])
-                
-                c_dauer, c_kcal = st.columns(2)
-                with c_dauer: m_dauer = st.text_input("Dauer (z.B. 45 Min)")
-                with c_kcal: m_kcal = st.text_input("Kalorien (optional)")
-                
-                m_notiz = st.text_input("Notiz / Details (z.B. 'Fokus auf Beine und Core')")
-                
-                if st.form_submit_button("Aktivität speichern"):
-                    # Textbausteine clever zusammensetzen
-                    kcal_text = f" (*{m_kcal} kcal*)" if m_kcal else ""
-                    dauer_text = f", {m_dauer}" if m_dauer else ""
-                    notiz_text = f" - {m_notiz}" if m_notiz else ""
+                with st.form("manual_gym_form", clear_on_submit=True):
+                    c_datum, c_sport = st.columns(2)
+                    # Nimmt als Standardwert automatisch das heutige Datum
+                    with c_datum: m_datum = st.text_input("Datum (z.B. 18.06.2026)", value=datetime.now().strftime("%d.%m.%Y"))
+                    with c_sport: m_sport = st.selectbox("Sportart / Aktivität", ["Krafttraining", "Yoga / Mobility", "Schwimmen", "Wandern", "Ski / Wintersport", "Alltag / Sonstiges"])
                     
-                    neuer_eintrag = f"**{m_datum}** | {m_sport}{dauer_text}{notiz_text}{kcal_text}"
+                    c_dauer, c_kcal = st.columns(2)
+                    with c_dauer: m_dauer = st.text_input("Dauer (z.B. 45 Min)")
+                    with c_kcal: m_kcal = st.text_input("Kalorien (optional)")
                     
-                    # In die dauerhafte Cloud-Historie schieben
-                    if "gym_history" not in st.session_state.physio_data:
-                        st.session_state.physio_data["gym_history"] = []
-                    st.session_state.physio_data["gym_history"].append(neuer_eintrag)
+                    m_notiz = st.text_input("Notiz / Details (z.B. 'Fokus auf Beine und Core')")
                     
-                    save_all_to_supabase()
-                    st.success("✅ Manuelle Aktivität gespeichert!")
-                    time.sleep(1)
-                    st.rerun()
-
-    with st.expander("🤖 Workout-Analyse & Coach-Feedback"):
-            with st.form("workout_analysis_form"):
-                analysis_upload = st.file_uploader("Screenshot der Trainingseinheit hochladen", type=["png", "jpg", "jpeg"], key="analysis_upload")
-                submit_analysis = st.form_submit_button("Workout tiefenanalysieren")
-                
-                if submit_analysis and analysis_upload:
-                    img = Image.open(analysis_upload)
-                    with st.spinner("Coach analysiert deine Übungen..."):
-                        feedback_prompt = """Du bist ein erfahrener Fitness-Coach. Analysiere die Übungen, Sätze und Gewichte auf diesem Screenshot im Detail.
-                        1. Welche Muskelgruppen oder Reize wurden primär gesetzt (z.B. Kraft, Kraftausdauer, Mobility)?
-                        2. Gib ein kurzes, prägnantes Feedback (max. 4 Sätze) zur Intensität/Balance und einen konkreten Tipp für das nächste Mal."""
+                    if st.form_submit_button("Aktivität speichern"):
+                        # Textbausteine clever zusammensetzen
+                        kcal_text = f" (*{m_kcal} kcal*)" if m_kcal else ""
+                        dauer_text = f", {m_dauer}" if m_dauer else ""
+                        notiz_text = f" - {m_notiz}" if m_notiz else ""
                         
-                        try:
-                            feedback = ask_gemini_with_retry(client, feedback_prompt, [img])
-                            st.markdown("### 📋 Dein Coach-Feedback:")
-                            st.info(feedback)
-                        except Exception as e:
-                            st.error(f"Fehler bei der Analyse: {e}")
+                        neuer_eintrag = f"**{m_datum}** | {m_sport}{dauer_text}{notiz_text}{kcal_text}"
+                        
+                        # In die dauerhafte Cloud-Historie schieben
+                        if "gym_history" not in st.session_state.physio_data:
+                            st.session_state.physio_data["gym_history"] = []
+                        st.session_state.physio_data["gym_history"].append(neuer_eintrag)
+                        
+                        save_all_to_supabase()
+                        st.success("✅ Manuelle Aktivität gespeichert!")
+                        time.sleep(1)
+                        st.rerun()
+    
+        with st.expander("🤖 Workout-Analyse & Coach-Feedback"):
+                with st.form("workout_analysis_form"):
+                    analysis_upload = st.file_uploader("Screenshot der Trainingseinheit hochladen", type=["png", "jpg", "jpeg"], key="analysis_upload")
+                    submit_analysis = st.form_submit_button("Workout tiefenanalysieren")
+                    
+                    if submit_analysis and analysis_upload:
+                        img = Image.open(analysis_upload)
+                        with st.spinner("Coach analysiert deine Übungen..."):
+                            feedback_prompt = """Du bist ein erfahrener Fitness-Coach. Analysiere die Übungen, Sätze und Gewichte auf diesem Screenshot im Detail.
+                            1. Welche Muskelgruppen oder Reize wurden primär gesetzt (z.B. Kraft, Kraftausdauer, Mobility)?
+                            2. Gib ein kurzes, prägnantes Feedback (max. 4 Sätze) zur Intensität/Balance und einen konkreten Tipp für das nächste Mal."""
+                            
+                            try:
+                                feedback = ask_gemini_with_retry(client, feedback_prompt, [img])
+                                st.markdown("### 📋 Dein Coach-Feedback:")
+                                st.info(feedback)
+                            except Exception as e:
+                                st.error(f"Fehler bei der Analyse: {e}")
 
     # --- ANSICHT: EINSTELLUNGEN ---
     elif st.session_state.ansicht == "Einstellungen":
