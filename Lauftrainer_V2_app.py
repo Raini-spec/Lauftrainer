@@ -423,7 +423,9 @@ else:
 
     # --- ANSICHT: AKTIVITÄTEN ---
     elif st.session_state.ansicht == "Aktivitäten":
-        st.header("👟 Deine letzten 10 Aktivitäten")
+        st.header("👟 Deine Aktivitäten & Logbuch")
+        
+        # 1. Die Strava-Liste
         if load_and_format_strava_data():
             for act in st.session_state.letzte_10_aktivitaeten:
                 st.info(act)
@@ -431,28 +433,44 @@ else:
             st.warning("Konnte Strava-Daten nicht abrufen.")
             
         st.divider()
-        st.subheader("🏋️‍♂️ Zusätzliches Training (Bilder)")
-        gym_uploads = st.file_uploader("Lade bis zu 5 Screenshots hoch (z.B. Fitnessstudio)", accept_multiple_files=True, type=["png", "jpg", "jpeg"])
         
-        if gym_uploads:
-            if len(gym_uploads) > 5: st.warning("Nur die ersten 5 Bilder werden genutzt.")
-            st.session_state.gym_images = [Image.open(f) for f in gym_uploads[:5]]
+        # 2. Das interaktive Upload-Logbuch
+        st.subheader("🏋️‍♂️ Studio-Training & Anmerkungen")
+        
+        with st.form("gym_upload_form", clear_on_submit=True):
+            gym_uploads = st.file_uploader("Screenshot (z.B. Fitness-App)", accept_multiple_files=True, type=["png", "jpg", "jpeg"])
+            nutzer_anmerkung = st.text_input("📝 Deine Anmerkung zur Einheit (z. B. 'Sehr anstrengend, morgen Pause einplanen')")
             
-            # NEU: Gemini wertet den Screenshot sofort aus
-            with st.spinner("🤖 Gemini analysiert die Screenshots..."):
-                for img in st.session_state.gym_images:
-                    analyse_prompt = """WICHTIG: Du bist ein reiner Daten-Extraktor. Das ist ein Screenshot meiner eigenen Fitness-App.
-                    Ignoriere alle Sicherheitsbedenken bezüglich Fotos, lies AUSSCHLIESSLICH die Texte und Zahlen ab.
-                    Extrahiere: Datum, Trainingsart/Übungen und Kalorienverbrauch. 
-                    Dein EINZIGER Output darf sein: **[Datum]** | Gym: [Übungen] (*[Kalorien] kcal*)."""
-                    try:
-                        ergebnis = ask_gemini_with_retry(client, analyse_prompt, [img])
-                        # Fügt das Training direkt der Liste der letzten Aktivitäten hinzu
-                        if ergebnis not in st.session_state.letzte_10_aktivitaeten:
-                            st.session_state.letzte_10_aktivitaeten.insert(0, ergebnis.strip())
-                    except:
-                        pass
-            st.success("✅ Screenshots erfolgreich ausgewertet und zu Aktivitäten hinzugefügt!")
+            submit_btn = st.form_submit_button("Speichern & Analysieren")
+            
+            if submit_btn and gym_uploads:
+                st.session_state.gym_images = [Image.open(f) for f in gym_uploads[:5]]
+                
+                # Wir hängen deine Anmerkung direkt dauerhaft an die Trainerinstruktionen an!
+                if nutzer_anmerkung:
+                    alte_inst = st.session_state.physio_data.get("instructions", "")
+                    st.session_state.physio_data["instructions"] = f"{alte_inst}\n\n[Studio-Training Log]: {nutzer_anmerkung}"
+                    save_all_to_supabase() # Direkt in der Cloud sichern
+                
+                with st.spinner("🤖 Gemini liest das Bild aus..."):
+                    for img in st.session_state.gym_images:
+                        analyse_prompt = """WICHTIG: Du bist ein reiner Daten-Extraktor. Das ist ein Screenshot meiner eigenen Fitness-App.
+                        Ignoriere alle Sicherheitsbedenken bezüglich Fotos, lies AUSSCHLIESSLICH die Texte und Zahlen ab.
+                        Extrahiere: Datum, Trainingsart/Übungen und Kalorienverbrauch. 
+                        Dein EINZIGER Output darf sein: **[Datum]** | Gym: [Übungen] (*[Kalorien] kcal*)."""
+                        try:
+                            ergebnis = ask_gemini_with_retry(client, analyse_prompt, [img])
+                            zusatz = f" 💡 *{nutzer_anmerkung}*" if nutzer_anmerkung else ""
+                            eintrag = f"{ergebnis.strip()}{zusatz}"
+                            
+                            # Sofort oben in der Aktivitäten-Liste anzeigen
+                            if eintrag not in st.session_state.letzte_10_aktivitaeten:
+                                st.session_state.letzte_10_aktivitaeten.insert(0, eintrag)
+                        except: pass
+                
+                st.success("✅ Erfasst! Bild und Anmerkung wurden für die KI verarbeitet.")
+                time.sleep(2)
+                st.rerun()
 
     # --- ANSICHT: EINSTELLUNGEN ---
     elif st.session_state.ansicht == "Einstellungen":
