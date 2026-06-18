@@ -696,8 +696,12 @@ else:
                     st.warning("Keine validen Läufe in den letzten 8 Wochen für eine Prognose gefunden.")
                     st.info("💡 **So löst du das:**\n"
                             "* **Daten abrufen:** Gehe in den Reiter **'Wochenplan'** und klicke auf den Button **'🔄 Wochenplan & Status aktualisieren'**. Das zieht die neuesten Daten von Strava in den App-Speicher.\n"
-                            "* **Distanz:** Für eine sinnvolle Prognose wertet die App nur Läufe über **3 km** Distanz aus.")
-    
+                            "* **Distanz:** Für eine sinnvolle Prognose wertet die App nur Läufe über **3 km** Distanz aus.\n"
+                            "* **Realismus:** Um eine realistische Prognose zu erhalten, stelle sicher, dass du in den letzten 8 Wochen mindestens ein bis zwei intensive Einheiten oder einen Testlauf absolviert hast.")
+            except Exception as e:
+                st.error(f"Fehler bei der Prognose: {e}")
+        else:
+            st.info("Konnte keine Strava-Daten finden. Lade im Wochenplan einmal neu!")
     # ==============================================================================
     # 💬 CHAT-INTERFAZ (COACH TALK)
     # ==============================================================================
