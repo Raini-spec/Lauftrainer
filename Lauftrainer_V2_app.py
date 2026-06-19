@@ -418,16 +418,6 @@ else:
                         2. Extrahiere die heutige und morgige Einheit.
                         3. Berechne den Leistungszustand.
                         
-                        VO2MAX-REGEL: Der letzte berechnete VO2max war {aktueller_vo2max}. Passe ihn basierend auf den neuen Strava-Daten maximal um +/- 0.5 Punkte an.
-                        
-                        {output_format_alle}
-                        """
-                        
-                        AUFGABE:
-                        1. Erstelle den adaptiven Wochenplan für den Rest DIESER Woche.
-                        2. Extrahiere die heutige und morgige Einheit.
-                        3. Berechne den Leistungszustand.
-                        
                         VO2MAX-REGEL: Der letzte berechnete VO2max war {aktueller_vo2max}. Passe ihn basierend auf den neuen Strava-Daten maximal um +/- 0.5 Punkte an (Glättung). Wenn er 'Nicht berechnet' ist, schätze ihn realistisch ein.
                         
                         {output_format_alle}
