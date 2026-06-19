@@ -711,15 +711,14 @@ else:
                         max_dist_text = f"{max_dist:.1f} km"
                         
                         # Reines HTML ohne f-String-Logik injizieren
-                        st.markdown(f"""
-                        <div style='background-color: #f0f2f6; padding: 10px; border-radius: 5px; border-left: 5px solid #ff4b4b;'>
-                            <small>Basis (Top 20% Pace):</small><br>
-                            <b>{basis_text}</b><br>
-                            <small>Lange Läufe (&gt;15km, 8w): <b>{lange_laeufe_text}</b></small><br>
-                            <small>Längster Lauf (8w): <b>{max_dist_text}</b></small>
-                        </div>
-                        """, unsafe_allow_html=True)
-                        st.markdown(html_text, unsafe_allow_html=True)
+                st.markdown(f"""
+                <div style='background-color: #f0f2f6; padding: 10px; border-radius: 5px; border-left: 5px solid #ff4b4b;'>
+                    <small>Basis (Top 20% Pace):</small><br>
+                    <b>{basis_text}</b><br>
+                    <small>Lange Läufe (&gt;15km, 8w): <b>{lange_laeufe_text}</b></small><br>
+                    <small>Längster Lauf (8w): <b>{max_dist_text}</b></small>
+                </div>
+                """, unsafe_allow_html=True)
                         
                     with c_5k: st.metric("5 km", fmt_s(prog_5k_s))
                     with c_10k: st.metric("10 km", fmt_s(prog_10k_s))
