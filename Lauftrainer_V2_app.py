@@ -345,55 +345,44 @@ else:
             st.markdown(st.session_state.wochenplan)
             
             # HIER SETZT DER NEUE CODE EIN (Eingerückt mit 8 Leerzeichen):
-            if st.button("🔄 Nur Wochenplan aktualisieren", type="primary"):
-                if load_and_format_strava_data():
-                    try:
-                        with st.spinner("Aktualisiere Wochenplan..."):
-                            tage = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
-                            monate = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"]
-                            jetzt = datetime.now() + timedelta(hours=2)
-                            heute_str = f"{tage[jetzt.weekday()]}, der {jetzt.day}. {monate[jetzt.month - 1]} {jetzt.year}"
-                            
-                            zeit_befehl = f"⚠️ WICHTIGER SYSTEM-ZEITANKER:\nHeute ist exakt {heute_str}!! Das ist die unumstößliche Realität."
-                            
-                            client = genai.Client(api_key=gemini_key)
-                            
-                            prompt_woche = f"""
-                            {zeit_befehl}
-                            🚨 DATUMS-REGEL: Die untenstehenden Strava-Daten sind HISTORIE der Vergangenheit! Leite den heutigen Tag AUSSCHLIESSLICH aus dem SYSTEM-ZEITANKER ab.
-                            
-                            Basierend auf diesem Masterplan:\n{st.session_state.get('trainingsplan', '')}
-                            Strava-Historie:\n{st.session_state.strava_context}
-                            Ziel & Event:\n{ziel_kontext}
-                            
-                            AUFGABE:
-                            1. Erstelle den adaptiven Wochenplan für den Rest DIESER Woche.
-                            2. Extrahiere die heutige und morgige Einheit.
-                            3. Berechne den Leistungszustand.
-                            
-                            VO2MAX-REGEL: Der letzte berechnete VO2max war {aktueller_vo2max}. Passe ihn basierend auf den neuen Strava-Daten maximal um +/- 0.5 Punkte an (Glättung). Wenn er 'Nicht berechnet' ist, schätze ihn realistisch ein.
-                            
-                            {output_format_alle}
-                            """
-                            
-                            text = ask_gemini_with_retry(client, prompt_woche)
-                            
-                            w_part = text.split("===WOCHENPLAN_START===")[1].split("===WOCHENPLAN_END===")[0].strip() if "===WOCHENPLAN_START===" in text else ""
-                            h_part = text.split("===HEUTE_START===")[1].split("===HEUTE_END===")[0].strip() if "===HEUTE_START===" in text else ""
-                            m_part = text.split("===MORGEN_START===")[1].split("===MORGEN_END===")[0].strip() if "===MORGEN_START===" in text else ""
-                            status_part = text.split("===STATUS_START===")[1].split("===STATUS_END===")[0].strip() if "===STATUS_START===" in text else "{}"
-                            
-                            s_json = json.loads(status_part) if "vo2max" in status_part else {}
-                            s_json["letztes_update"] = datetime.now().strftime("%d.%m.%Y")
-                            
-                            save_all_to_supabase(plan_text=st.session_state.get('trainingsplan', ''), woche_text=w_part, status_json=s_json, heute_text=h_part, morgen_text=m_part)
-                            st.success("Wochenplan erfolgreich aktualisiert!")
-                            st.rerun()
-                    except Exception as e:
-                        st.error(f"Fehler: {e}")
-        else:
-            st.info("Kein Wochenplan vorhanden. Generiere zuerst deinen großen Masterplan!")
-
+            if st.button("🔄 Wochenplan & Status aktualisieren", type="primary"):
+            if load_and_format_strava_data():
+                try:
+                    with st.spinner("Berechne adaptiven Wochenplan und speichere in Cloud..."):
+                        # Datum JETZT direkt beim Klick berechnen
+                        tage = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
+                        monate = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"]
+                        jetzt = datetime.now() + timedelta(hours=2)
+                        heute_str = f"{tage[jetzt.weekday()]}, der {jetzt.day}. {monate[jetzt.month - 1]} {jetzt.year}"
+                        zeit_befehl = f"⚠️ WICHTIGER SYSTEM-ZEITANKER:\nHeute ist exakt {heute_str}!! Das ist die unumstößliche Realität."
+                        
+                        prompt = f"""
+                        {zeit_befehl}
+                        🚨 DATUMS-REGEL: Die untenstehenden Strava-Daten sind HISTORIE der Vergangenheit! Leite den heutigen Tag AUSSCHLIESSLICH aus dem SYSTEM-ZEITANKER ab.
+                        
+                        Masterplan:\n{st.session_state.trainingsplan}
+                        Strava (Bisherige Historie):\n{st.session_state.strava_context}
+                        Ziel & Event:\n{ziel_kontext}
+                        Instruktionen:\n{trainer_instructions}
+                        
+                        AUFGABE: Wochenplan anpassen, Heute/Morgen extrahieren, Status berechnen.
+                        VO2MAX-REGEL: Der letzte berechnete VO2max war {aktueller_vo2max}. Passe ihn basierend auf den neuen Strava-Daten maximal um +/- 0.5 Punkte an (Glättung). Wenn er 'Nicht berechnet' ist, schätze ihn realistisch ein.
+                        {output_format_alle}
+                        """
+                        text = ask_gemini_with_retry(client, prompt, st.session_state.doc_images)
+                        
+                        status_part = text.split("===STATUS_START===")[1].split("===STATUS_END===")[0].strip() if "===STATUS_START===" in text else "{}"
+                        h_part = text.split("===HEUTE_START===")[1].split("===HEUTE_END===")[0].strip() if "===HEUTE_START===" in text else ""
+                        m_part = text.split("===MORGEN_START===")[1].split("===MORGEN_END===")[0].strip() if "===MORGEN_START===" in text else ""
+                        w_part = text.split("===WOCHENPLAN_START===")[1].split("===WOCHENPLAN_END===")[0].strip() if "===WOCHENPLAN_START===" in text else ""
+                        
+                        s_json = json.loads(status_part) if "vo2max" in status_part else {}
+                        s_json["letztes_update"] = datetime.now().strftime("%d.%m.%Y")
+                        
+                        save_all_to_supabase(woche_text=w_part, status_json=s_json, heute_text=h_part, morgen_text=m_part)
+                        st.rerun()
+                except Exception as e: st.error(f"Fehler bei KI-Verarbeitung: {e}")
+            else: st.error("Konnte Strava-Daten nicht laden.")
       # --- ANSICHT: MASTERPLAN ---
     elif st.session_state.ansicht == "Masterplan":
         st.header("🏆 Langfristiger Masterplan")
@@ -464,14 +453,34 @@ else:
         st.header("👟 Deine Aktivitäten & Logbuch")
         
         if load_and_format_strava_data():
-            # NEU: Zeige zuerst die dauerhaft gespeicherten Studio-Trainings (in Grün)
+            all_activities = []
+            
+            # 1. Gym-Historie sammeln
             gym_hist = st.session_state.physio_data.get("gym_history", [])
-            for g in reversed(gym_hist[-5:]): # Die letzten 5 oben anzeigen
-                st.success(f"🏋️‍♂️ {g}")
+            for g in gym_hist:
+                all_activities.append({"typ": "gym", "text": g})
                 
-            # Danach die blauen Strava-Aktivitäten
+            # 2. Strava-Historie sammeln
             for act in st.session_state.letzte_10_aktivitaeten:
-                st.info(act)
+                all_activities.append({"typ": "strava", "text": act})
+                
+            # 3. Sortier-Funktion (Liest das Datum "DD.MM.YY" oder "DD.MM.YYYY" aus)
+            def get_date(item):
+                try:
+                    date_str = item["text"].split("**")[1].strip()
+                    if len(date_str) == 8: return datetime.strptime(date_str, "%d.%m.%y")
+                    else: return datetime.strptime(date_str, "%d.%m.%Y")
+                except: return datetime.min # Fallback bei Fehlern
+                
+            # 4. Liste chronologisch sortieren (neueste zuerst)
+            all_activities.sort(key=get_date, reverse=True)
+            
+            # 5. UI Ausgabe
+            for item in all_activities:
+                if item["typ"] == "gym":
+                    st.success(f"🏋️‍♂️ {item['text']}")
+                else:
+                    st.info(item['text'])
         else:
             st.warning("Konnte Strava-Daten nicht abrufen.")
             
