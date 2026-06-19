@@ -7,6 +7,7 @@ from google import genai
 import time 
 from datetime import datetime, timedelta
 import json 
+import PyPDF2
 from PIL import Image 
 from supabase import create_client, Client
 import extra_streamlit_components as stx 
@@ -136,7 +137,12 @@ def load_and_format_strava_data():
                     date = act.get('start_date_local', '')[:10]
                     p = act.get('average_heartrate', 'Kein Puls')
                     t_de = "Lauf" if t in ["Run", "Lauf"] else ("Radfahren" if t in ["Ride", "Cycling"] else t)
-                    info = f"Pace: {(1000/s)/60:.2f} min/km" if t in ["Run", "Lauf"] and s > 0 else f"Geschw.: {s*3.6:.2f} km/h"
+                    if t in ["Run", "Lauf"] and s > 0:
+                        pace_gesamt_sekunden = int(1000 / s)
+                        mins, secs = divmod(pace_gesamt_sekunden, 60)
+                        info = f"Pace: {mins}.{secs:02d} min/km"
+                    else:
+                        info = f"Geschw.: {s*3.6:.2f} km/h"
                     data += f"- [{date}] [{t}] {act.get('name')}: {d:.2f} km | {info} | Ø Puls: {p}\n"
                     
                     if len(last_ten) < 10:
@@ -593,26 +599,26 @@ else:
             })
             if save_all_to_supabase():
                 st.success("Erfolgreich in Supabase für dein Profil gespeichert!")
-                st.subheader("📄 Hintergrundwissen & Trainingspläne")
-                plan_uploads = st.file_uploader("Lade bis zu 5 Dokumente hoch (Pläne, PDFs, Bilder)", accept_multiple_files=True, type=["png", "jpg", "jpeg", "pdf"])
         
-                if plan_uploads:
-                    if len(plan_uploads) > 5: st.warning("Nur die ersten 5 Dateien werden genutzt.")
+        # HIER REFORMIERT: Liegt nun außerhalb des Buttons, bleibt dauerhaft sichtbar
+        st.subheader("📄 Hintergrundwissen & Trainingspläne")
+        plan_uploads = st.file_uploader("Lade bis zu 5 Dokumente hoch (Pläne, PDFs, Bilder)", accept_multiple_files=True, type=["png", "jpg", "jpeg", "pdf"])
+
+        if plan_uploads:
+            if len(plan_uploads) > 5: st.warning("Nur die ersten 5 Dateien werden genutzt.")
+            st.session_state.plan_images = []
+            st.session_state.doc_texts = []
             
-                    st.session_state.plan_images = []
-                    st.session_state.doc_texts = [] # Leeren, damit es bei neuem Upload nicht doppelt speichert
-            
-                    for f in plan_uploads[:5]:
-                        if f.type == "application/pdf":
-                            try:
-                                reader = PyPDF2.PdfReader(f)
-                                text = "".join([page.extract_text() for page in reader.pages])
-                                st.session_state.doc_texts.append(text)
-                            except: pass
-                        else:
-                            st.session_state.plan_images.append(Image.open(f))
-                    
-                    st.success(f"✅ {len(plan_uploads[:5])} Datei(en) im Hintergrund gemerkt!")
+            for f in plan_uploads[:5]:
+                if f.type == "application/pdf":
+                    try:
+                        reader = PyPDF2.PdfReader(f)
+                        text = "".join([page.extract_text() for page in reader.pages])
+                        st.session_state.doc_texts.append(text)
+                    except: pass
+                else:
+                    st.session_state.plan_images.append(Image.open(f))
+            st.success(f"✅ {len(plan_uploads[:5])} Datei(en) im Hintergrund gemerkt!")
 
     # --- ANSICHT: STATISTIKEN & PROGNOSEN ---
     elif st.session_state.ansicht == "Statistiken":
