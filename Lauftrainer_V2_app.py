@@ -705,21 +705,19 @@ else:
                     # 3. UI Darstellung
                     c_info, c_5k, c_10k, c_hm = st.columns([2,1,1,1])
                     with c_info:
-                        # Variablen absolut f-string-sicher vorbereiten
-                        basis_text = fmt_s(basis_pace_s) + " min/km"
-                        lange_laeufe_text = str(long_runs_count)
-                        max_dist_text = "{:.1f} km".format(max_dist)
+                        # Vorbereitung als reine, sichere Textstücke
+                        b_txt = fmt_s(basis_pace_s) + " min/km"
+                        l_txt = str(long_runs_count)
+                        m_txt = "{:.1f} km".format(max_dist)
                         
-                        # Wir nutzen KEIN f vor den Anführungszeichen, sondern .format() am Ende!
-                        html_template = """
-                        <div style='background-color: #f0f2f6; padding: 10px; border-radius: 5px; border-left: 5px solid #ff4b4b;'>
-                            <small>Basis (Top 20% Pace):</small><br>
-                            <b>{0}</b><br>
-                            <small>Lange Läufe (&gt;15km, 8w): <b>{1}</b></small><br>
-                            <small>Längster Lauf (8w): <b>{2}</b></small>
-                        </div>
-                        """
+                        # Absolut sichere Verkettung ohne Zeilenumbrüche im String
+                        html = "<div style='background-color: #f0f2f6; padding: 10px; border-radius: 5px; border-left: 5px solid #ff4b4b;'>"
+                        html += "<small>Basis (Top 20% Pace):</small><br><b>" + b_txt + "</b><br>"
+                        html += "<small>Lange Läufe (>15km, 8w): <b>" + l_txt + "</b></small><br>"
+                        html += "<small>Längster Lauf (8w): <b>" + m_txt + "</b></small>"
+                        html += "</div>"
                         
+                        st.markdown(html, unsafe_allow_html=True)
                         # Hier werden die Werte sicher injiziert
                         st.markdown(html_template.format(basis_text, lange_laeufe_text, max_dist_text), unsafe_allow_html=True)
                     with c_5k: st.metric("5 km", fmt_s(prog_5k_s))
