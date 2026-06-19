@@ -296,14 +296,18 @@ if not gemini_key or not access_token:
 # 🏃‍♂️ HAUPT-APP BEREICH (DYNAMISCH)
 # ==============================================================================
 else:
-    heute_str = datetime.now().strftime("%A, %d. %B %Y")
-    zeit_befehl = f"⚠️ WICHTIGER SYSTEM-ZEITANKER:\nHeute ist exakt der {heute_str}. Rechne alle Pläne von diesem Datum aus in die Zukunft."
+    # Deutsches Datum inkl. deutscher Zeitzone (CEST) erzwingen
+    tage = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
+    monate = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"]
+    jetzt = datetime.now() + timedelta(hours=2) # Anpassung an deutsche Zeit
+    heute_str = f"{tage[jetzt.weekday()]}, der {jetzt.day}. {monate[jetzt.month - 1]} {jetzt.year}"
+    
+    zeit_befehl = f"⚠️ WICHTIGER SYSTEM-ZEITANKER:\nHeute ist exakt {heute_str}!! Das ist die unumstößliche Realität."
+    
     client = genai.Client(api_key=gemini_key)
     if "temp_auth_data" in st.session_state:
         cookie_manager.set("auth_paket", json.dumps(st.session_state.temp_auth_data), key="cookie_set_main_auth")
 
-    heute_iso = datetime.now().strftime("%A, %d. %B %Y")
-    zeit_befehl = f"⚠️ WICHTIGER SYSTEM-ZEITANKER:\nHeute ist exakt der {heute_iso}. Wir befinden uns im Jahr 2026! Rechne Pläne von heute in die Zukunft."
     output_format_alle = """
     ===STATUS_START===
     {"vo2max": "Zahl", "prognose_5k": "Zeit", "prognose_10k": "Zeit", "prognose_21k": "Zeit", "belastung": "Kurzer Text", "belastung_prozent": "Zahl 0-100"}
@@ -343,9 +347,11 @@ else:
                 with st.spinner("Berechne adaptiven Wochenplan und speichere in Cloud..."):
                     if load_and_format_strava_data():
                         prompt = f"""
-                        ⚠️ WICHTIGER ZEIT-KONTEXT FÜR DIESE PLANUNG: Heute ist {heute_str}. Alle geplanten Trainingseinheiten müssen sich auf dieses Datum beziehen.
+                        {zeit_befehl}
+                        🚨 DATUMS-REGEL: Die untenstehenden Strava-Daten sind HISTORIE der Vergangenheit! Wenn dort eine Aktivität verzeichnet ist, darfst du dieses alte Datum UNTER KEINEN UMSTÄNDEN als "heute" oder "gestern" ausgeben.
+                        
                         Masterplan:\n{st.session_state.trainingsplan}
-                        Strava:\n{st.session_state.strava_context}
+                        Strava (Bisherige Historie):\n{st.session_state.strava_context}
                         Ziel & Event:\n{ziel_kontext}
                         Instruktionen:\n{trainer_instructions}
                         
@@ -402,9 +408,21 @@ else:
                     with st.spinner("Schritt 2/2: Leite Wochenplan ab und synchronisiere Cloud-Tabelle..."):
                         prompt_woche = f"""
                         {zeit_befehl}
+                        🚨 DATUMS-REGEL: Die untenstehenden Strava-Daten sind HISTORIE der Vergangenheit! Leite den heutigen Tag AUSSCHLIESSLICH aus dem SYSTEM-ZEITANKER ab.
+                        
                         Basierend auf diesem Masterplan:\n{mp_part}
-                        Strava-Daten:\n{st.session_state.strava_context}
+                        Strava-Historie:\n{st.session_state.strava_context}
                         Ziel & Event:\n{ziel_kontext}
+                        
+                        AUFGABE:
+                        1. Erstelle den adaptiven Wochenplan für den Rest DIESER Woche.
+                        2. Extrahiere die heutige und morgige Einheit.
+                        3. Berechne den Leistungszustand.
+                        
+                        VO2MAX-REGEL: Der letzte berechnete VO2max war {aktueller_vo2max}. Passe ihn basierend auf den neuen Strava-Daten maximal um +/- 0.5 Punkte an.
+                        
+                        {output_format_alle}
+                        """
                         
                         AUFGABE:
                         1. Erstelle den adaptiven Wochenplan für den Rest DIESER Woche.
