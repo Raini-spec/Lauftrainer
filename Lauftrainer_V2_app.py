@@ -705,14 +705,16 @@ else:
                     # 3. UI Darstellung
                     c_info, c_5k, c_10k, c_hm = st.columns([2,1,1,1])
                     with c_info:
-                        st.markdown(f"""
+                        # Wir bauen den Text vorher zusammen, das ist absolut sicher gegen Syntax-Fehler
+                        html_text = f"""
                         <div style='background-color: #f0f2f6; padding: 10px; border-radius: 5px; border-left: 5px solid #ff4b4b;'>
                             <small>Basis (Top 20% Pace):</small><br>
                             <b>{fmt_s(basis_pace_s)} min/km</b><br>
-                            <small>Lange Läufe (>15km, 8w): <b>{long_runs_count}</b></small><br>
+                            <small>Lange Läufe (&gt;15km, 8w): <b>{long_runs_count}</b></small><br>
                             <small>Längster Lauf (8w): <b>{max_dist:.1f} km</b></small>
                         </div>
-                        """, unsafe_allow_html=True)
+                        """
+                        st.markdown(html_text, unsafe_allow_html=True)
                         
                     with c_5k: st.metric("5 km", fmt_s(prog_5k_s))
                     with c_10k: st.metric("10 km", fmt_s(prog_10k_s))
