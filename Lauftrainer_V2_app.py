@@ -291,7 +291,7 @@ if not gemini_key or not access_token:
 # ==============================================================================
 else:
     heute_str = datetime.now().strftime("%A, %d. %B %Y")
-    zeit_befehl = f"⚠️ WICHTIGER SYSTEM-ZEITANKER:\nHeute ist exakt der {heute_str}. Rechne alle Pläne von diesem Datum aus in die Zukunft
+    zeit_befehl = f"⚠️ WICHTIGER SYSTEM-ZEITANKER:\nHeute ist exakt der {heute_str}. Rechne alle Pläne von diesem Datum aus in die Zukunft."
     client = genai.Client(api_key=gemini_key)
     if "temp_auth_data" in st.session_state:
         cookie_manager.set("auth_paket", json.dumps(st.session_state.temp_auth_data), key="cookie_set_main_auth")
