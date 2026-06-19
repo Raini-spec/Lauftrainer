@@ -296,10 +296,9 @@ if not gemini_key or not access_token:
 # 🏃‍♂️ HAUPT-APP BEREICH (DYNAMISCH)
 # ==============================================================================
 else:
-    # Deutsches Datum inkl. deutscher Zeitzone (CEST) erzwingen
     tage = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
     monate = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"]
-    jetzt = datetime.now() + timedelta(hours=2) # Anpassung an deutsche Zeit
+    jetzt = datetime.now() + timedelta(hours=2)
     heute_str = f"{tage[jetzt.weekday()]}, der {jetzt.day}. {monate[jetzt.month - 1]} {jetzt.year}"
     
     zeit_befehl = f"⚠️ WICHTIGER SYSTEM-ZEITANKER:\nHeute ist exakt {heute_str}!! Das ist die unumstößliche Realität."
