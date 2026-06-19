@@ -718,8 +718,7 @@ else:
                     <small>Lange Läufe (&gt;15km, 8w): <b>{lange_laeufe_text}</b></small><br>
                     <small>Längster Lauf (8w): <b>{max_dist_text}</b></small>
                 </div>
-                """, unsafe_allow_html=True)
-                        
+                """, unsafe_allow_html=True)   
                     with c_5k: st.metric("5 km", fmt_s(prog_5k_s))
                     with c_10k: st.metric("10 km", fmt_s(prog_10k_s))
                     with c_hm: st.metric("Halbmarathon", fmt_s(prog_21k_s))
