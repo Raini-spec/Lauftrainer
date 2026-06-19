@@ -329,6 +329,7 @@ else:
         ziel_kontext += f"**Angestrebte Zielzeit:** {st.session_state.physio_data.get('zielzeit', '?')}\n"
 
     # --- ANSICHT: WOCHENPLAN ---
+    # --- ANSICHT: WOCHENPLAN ---
     if st.session_state.ansicht == "Wochenplan":
         st.header("📅 Aktueller Wochenplan")
         
@@ -342,38 +343,58 @@ else:
 
         if st.session_state.get("wochenplan"):
             st.markdown(st.session_state.wochenplan)
-            if st.button("🔄 Wochenplan & Status aktualisieren", type="primary"):
-                with st.spinner("Berechne adaptiven Wochenplan und speichere in Cloud..."):
-                    if load_and_format_strava_data():
-                        prompt = f"""
-                        {zeit_befehl}
-                        🚨 DATUMS-REGEL: Die untenstehenden Strava-Daten sind HISTORIE der Vergangenheit! Wenn dort eine Aktivität verzeichnet ist, darfst du dieses alte Datum UNTER KEINEN UMSTÄNDEN als "heute" oder "gestern" ausgeben.
-                        
-                        Masterplan:\n{st.session_state.trainingsplan}
-                        Strava (Bisherige Historie):\n{st.session_state.strava_context}
-                        Ziel & Event:\n{ziel_kontext}
-                        Instruktionen:\n{trainer_instructions}
-                        
-                        AUFGABE: Wochenplan anpassen, Heute/Morgen extrahieren, Status berechnen.
-                        VO2MAX-REGEL: Der letzte berechnete VO2max war {aktueller_vo2max}. Passe ihn basierend auf den neuen Strava-Daten maximal um +/- 0.5 Punkte an (Glättung). Wenn er 'Nicht berechnet' ist, schätze ihn realistisch ein.
-                        {output_format_alle}
-                        """
-                        try:
-                            text = ask_gemini_with_retry(client, prompt, st.session_state.doc_images)
-                            status_part = text.split("===STATUS_START===")[1].split("===STATUS_END===")[0].strip() if "===STATUS_START===" in text else "{}"
+            
+            # HIER SETZT DER NEUE CODE EIN (Eingerückt mit 8 Leerzeichen):
+            if st.button("🔄 Nur Wochenplan aktualisieren", type="primary"):
+                if load_and_format_strava_data():
+                    try:
+                        with st.spinner("Aktualisiere Wochenplan..."):
+                            tage = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
+                            monate = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"]
+                            jetzt = datetime.now() + timedelta(hours=2)
+                            heute_str = f"{tage[jetzt.weekday()]}, der {jetzt.day}. {monate[jetzt.month - 1]} {jetzt.year}"
+                            
+                            zeit_befehl = f"⚠️ WICHTIGER SYSTEM-ZEITANKER:\nHeute ist exakt {heute_str}!! Das ist die unumstößliche Realität."
+                            
+                            client = genai.Client(api_key=gemini_key)
+                            
+                            prompt_woche = f"""
+                            {zeit_befehl}
+                            🚨 DATUMS-REGEL: Die untenstehenden Strava-Daten sind HISTORIE der Vergangenheit! Leite den heutigen Tag AUSSCHLIESSLICH aus dem SYSTEM-ZEITANKER ab.
+                            
+                            Basierend auf diesem Masterplan:\n{st.session_state.get('trainingsplan', '')}
+                            Strava-Historie:\n{st.session_state.strava_context}
+                            Ziel & Event:\n{ziel_kontext}
+                            
+                            AUFGABE:
+                            1. Erstelle den adaptiven Wochenplan für den Rest DIESER Woche.
+                            2. Extrahiere die heutige und morgige Einheit.
+                            3. Berechne den Leistungszustand.
+                            
+                            VO2MAX-REGEL: Der letzte berechnete VO2max war {aktueller_vo2max}. Passe ihn basierend auf den neuen Strava-Daten maximal um +/- 0.5 Punkte an (Glättung). Wenn er 'Nicht berechnet' ist, schätze ihn realistisch ein.
+                            
+                            {output_format_alle}
+                            """
+                            
+                            text = ask_gemini_with_retry(client, prompt_woche)
+                            
+                            w_part = text.split("===WOCHENPLAN_START===")[1].split("===WOCHENPLAN_END===")[0].strip() if "===WOCHENPLAN_START===" in text else ""
                             h_part = text.split("===HEUTE_START===")[1].split("===HEUTE_END===")[0].strip() if "===HEUTE_START===" in text else ""
                             m_part = text.split("===MORGEN_START===")[1].split("===MORGEN_END===")[0].strip() if "===MORGEN_START===" in text else ""
-                            w_part = text.split("===WOCHENPLAN_START===")[1].split("===WOCHENPLAN_END===")[0].strip() if "===WOCHENPLAN_START===" in text else ""
+                            status_part = text.split("===STATUS_START===")[1].split("===STATUS_END===")[0].strip() if "===STATUS_START===" in text else "{}"
                             
                             s_json = json.loads(status_part) if "vo2max" in status_part else {}
                             s_json["letztes_update"] = datetime.now().strftime("%d.%m.%Y")
                             
-                            save_all_to_supabase(woche_text=w_part, status_json=s_json, heute_text=h_part, morgen_text=m_part)
+                            save_all_to_supabase(plan_text=st.session_state.get('trainingsplan', ''), woche_text=w_part, status_json=s_json, heute_text=h_part, morgen_text=m_part)
+                            st.success("Wochenplan erfolgreich aktualisiert!")
                             st.rerun()
-                        except Exception as e: st.error(f"Fehler bei KI-Verarbeitung: {e}")
-                    else: st.error("Konnte Strava-Daten nicht laden.")
+                    except Exception as e:
+                        st.error(f"Fehler: {e}")
         else:
             st.info("Kein Wochenplan vorhanden. Generiere zuerst deinen großen Masterplan!")
+
+    # --- ANSICHT: MASTERPLAN ---
 
     # --- ANSICHT: MASTERPLAN ---
     elif st.session_state.ansicht == "Masterplan":
