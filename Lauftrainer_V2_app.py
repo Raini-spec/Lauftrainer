@@ -365,7 +365,10 @@ else:
                             Ziel & Event:\n{ziel_kontext}
                             Instruktionen:\n{trainer_instructions}
                             
-                            AUFGABE: Wochenplan anpassen, Heute/Morgen extrahieren, Status berechnen.
+                            AUFGABE: 
+                            1. Erstelle den adaptiven Wochenplan AUSSCHLIESSLICH für den Rest dieser aktuellen Woche und die komplette nächste Folgewoche (übersichtlich aufgeteilt in 'Woche 1 (Aktuell)' und 'Woche 2 (Kommende Woche)'). Schneide alle weiteren Wochen bis zum Wettkampf rigoros ab – dafür gibt es den Masterplan!
+                            2. Extrahiere die heutige und morgige Einheit.
+                            3. Berechne den Leistungszustand.
                             VO2MAX-REGEL: Der letzte berechnete VO2max war {aktueller_vo2max}. Passe ihn basierend auf den neuen Strava-Daten maximal um +/- 0.5 Punkte an (Glättung). Wenn er 'Nicht berechnet' ist, schätze ihn realistisch ein.
                             {output_format_alle}
                             """
@@ -409,7 +412,9 @@ else:
                         {trainer_instructions}
                         
                         AUFGABE:
-                        Erstelle AUSSCHLIESSLICH den großen, langfristigen Masterplan im Markdown-Format. Richte den Plan zwingend auf das angegebene Trainingsziel aus! Fasse dich prägnant, konzentriere dich auf die Wochenstruktur.
+                        1. Erstelle den adaptiven Wochenplan AUSSCHLIESSLICH für den Rest dieser aktuellen Woche und die komplette nächste Folgewoche (übersichtlich aufgeteilt in 'Woche 1 (Aktuell)' und 'Woche 2 (Kommende Woche)'). Kürze alle darauffolgenden Wochen bis zum Event weg.
+                        2. Extrahiere die heutige und morgige Einheit.
+                        3. Berechne den Leistungszustand.
                         """
                         mp_part = ask_gemini_with_retry(client, prompt_master, st.session_state.doc_images)
                     
