@@ -503,17 +503,16 @@ else:
                 sortierte_liste = list(enumerate(gym_hist))
                 # Wir koppeln jeden Eintrag an seinen originalen Index
                 sortierte_liste = list(enumerate(gym_hist))
-                sortierte_liste.sort(key=lambda x: extract_date_from_gym_entry(x[1]), reverse=True)
-                
-                for original_index, g in sortierte_liste:
-                    c_text, c_del = st.columns([6, 1])
-                
                 for original_index, g in sortierte_liste:
                     c_text, c_del = st.columns([6, 1])
                     with c_text:
                         st.success(g)
                     with c_del:
-                        if st.button("🗑️", key=f"del_gym_{original_index}"):
+                        # Wir säubern den Text von Sonderzeichen, um einen sicheren, eindeutigen Key zu bauen
+                        safe_string = "".join(c for c in g if c.isalnum())[:20]
+                        unique_key = f"del_gym_{original_index}_{safe_string}"
+                        
+                        if st.button("🗑️", key=unique_key):
                             st.session_state.physio_data["gym_history"].pop(original_index)
                             save_all_to_supabase()
                             st.toast("Einheit wurde gelöscht!")
