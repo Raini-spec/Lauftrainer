@@ -426,15 +426,16 @@ else:
                         🚨 DATUMS-REGEL: Die untenstehenden Strava-Daten sind HISTORIE der Vergangenheit! Leite den heutigen Tag AUSSCHLIESSLICH aus dem SYSTEM-ZEITANKER ab.
                         
                         Basierend auf diesem Masterplan:\n{mp_part}
-                        Strava-Historie:\n{st.session_state.strava_context}
+                        Kombinierte Aktivitätsdaten (Strava + Manuell):\n{st.session_state.strava_context}
+                        Aktueller Leistungsstatus: VO2max {aktueller_vo2max} | {st.session_state.get('leistungsstatus', {})}
                         Ziel & Event:\n{ziel_kontext}
                         
                         AUFGABE:
-                        1. Erstelle den adaptiven Wochenplan für den Rest DIESER Woche.
+                        1. Erstelle den adaptiven Wochenplan AUSSCHLIESSLICH für den Rest dieser aktuellen Woche und die komplette nächste Folgewoche (übersichtlich aufgeteilt in 'Woche 1 (Aktuell)' und 'Woche 2 (Kommende Woche)'). Kürze alle darauffolgenden Wochen bis zum Event weg.
                         2. Extrahiere die heutige und morgige Einheit.
                         3. Berechne den Leistungszustand.
                         
-                        VO2MAX-REGEL: Der letzte berechnete VO2max war {aktueller_vo2max}. Passe ihn basierend auf den neuen Strava-Daten maximal um +/- 0.5 Punkte an (Glättung). Wenn er 'Nicht berechnet' ist, schätze ihn realistisch ein.
+                        VO2MAX-REGEL: Der letzte berechnete VO2max war {aktueller_vo2max}. Passe ihn basierend auf den neuen Daten maximal um +/- 0.5 Punkte an (Glättung). Wenn er 'Nicht berechnet' ist, schätze ihn realistisch ein.
                         
                         {output_format_alle}
                         """
