@@ -537,7 +537,7 @@ else:
                     c_datum, c_sport = st.columns(2)
                     # Nimmt als Standardwert automatisch das heutige Datum
                     with c_datum: m_datum = st.text_input("Datum (z.B. 18.06.2026)", value=datetime.now().strftime("%d.%m.%Y"))
-                    with c_sport: m_sport = st.selectbox("Sportart / Aktivität", ["Krafttraining", "Yoga / Mobility", "Schwimmen", "Wandern", "Ski / Wintersport", "Alltag / Sonstiges"])
+                    with c_sport: m_sport = st.selectbox("Sportart / Aktivität", ["Lauf", "Krafttraining", "Yoga / Mobility", "Schwimmen", "Wandern", "Ski / Wintersport", "Alltag / Sonstiges"])
                     
                     c_dauer, c_kcal = st.columns(2)
                     with c_dauer: m_dauer = st.text_input("Dauer (z.B. 45 Min)")
