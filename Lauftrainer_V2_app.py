@@ -465,9 +465,28 @@ else:
             all_activities = []
             
             # 1. Gym-Historie sammeln
+            # --- GEÄNDERTER BEREICH FÜR DIE MANUELLEN EINHEITEN ---
             gym_hist = st.session_state.physio_data.get("gym_history", [])
-            for g in gym_hist:
-                all_activities.append({"typ": "gym", "text": g})
+            
+            if gym_hist:
+                st.markdown("### 🏋️‍♂️ Manuelle Einheiten (Studio/Gym)")
+                # Wir gehen die Liste rückwärts durch (Neueste oben), nutzen aber enumerate für den echten Index
+                for index, g in reversed(list(enumerate(gym_hist))):
+                    # Wir bauen 2 Spalten: Links der Text, rechts ein kleiner Lösch-Button
+                    c_text, c_del = st.columns([6, 1])
+                    with c_text:
+                        st.success(g)
+                    with c_del:
+                        # Ein eindeutiger Key verhindert Streamlit-Konflikte
+                        if st.button("🗑️", key=f"del_gym_{index}"):
+                            # Eintrag aus der Liste im Session State löschen
+                            st.session_state.physio_data["gym_history"].pop(index)
+                            # Änderungen sofort in Supabase sichern
+                            save_all_to_supabase()
+                            st.toast("Einheit wurde gelöscht!")
+                            time.sleep(0.5)
+                            st.rerun()
+                st.write("---")
                 
             # 2. Strava-Historie sammeln
             for act in st.session_state.letzte_10_aktivitaeten:
