@@ -560,29 +560,31 @@ else:
     
         with st.expander("🤖 Workout-Analyse & Coach-Feedback"):
                 with st.form("workout_analysis_form"):
-                    analysis_upload = st.file_uploader("Screenshot der Trainingseinheit hochladen", type=["png", "jpg", "jpeg"], key="analysis_upload")
+                    # ÄNDERUNG HIER: Mehrfach-Upload erlauben
+                    analysis_uploads = st.file_uploader("Screenshots der Trainingseinheit hochladen", accept_multiple_files=True, type=["png", "jpg", "jpeg"], key="analysis_upload")
                     submit_analysis = st.form_submit_button("Workout tiefenanalysieren")
                     
-                    if submit_analysis and analysis_upload:
-                        img = Image.open(analysis_upload)
+                    if submit_analysis and analysis_uploads:
+                        # Alle hochgeladenen Bilder in eine Liste packen (maximal 5)
+                        img_liste = [Image.open(f) for f in analysis_uploads[:5]]
                         with st.spinner("Coach analysiert deine Übungen..."):
                             
-                            # HIER KOMMT DEIN NEUER CODE HIN:
                             aktueller_plan = st.session_state.get('wochenplan', 'Kein Wochenplan vorhanden.')
                             ziel_kontext = st.session_state.physio_data.get('ziel_typ', 'Allgemeines Training')
                             
-                            feedback_prompt = f"""Du bist ein erfahrener Fitness-Coach. Analysiere den Screenshot dieser Trainingseinheit und setze sie zwingend in Bezug zu meinem aktuellen Trainingsplan.
+                            feedback_prompt = f"""Du bist ein erfahrener Fitness-Coach. Analysiere die Screenshots dieser Trainingseinheiten und setze sie zwingend in Bezug zu meinem aktuellen Trainingsplan.
                             
                             Mein übergeordnetes Ziel: {ziel_kontext}
                             Mein aktueller Wochenplan:
                             {aktueller_plan}
                             
-                            1. Erkenne die Sportart (Kraft, Ausdauer etc.) und bewerte die Metriken.
-                            2. Beurteile konkret: Wie gut passt diese Einheit in meinen aktuellen Wochenplan? War sie für das Ziel zu hart, zu leicht oder genau richtig?
+                            1. Erkenne die Sportart(en), Übungen und bewerte die Metriken auf den Bildern.
+                            2. Beurteile konkret: Wie gut passen diese Einheiten in meinen aktuellen Wochenplan? War es für das Ziel zu hart, zu leicht oder genau richtig?
                             3. Gib ein kurzes, prägnantes Feedback (max. 4 Sätze) und einen Tipp, worauf ich bei den nächsten Einheiten des Plans achten sollte."""
                             
                             try:
-                                feedback = ask_gemini_with_retry(client, feedback_prompt, [img])
+                                # HIER GEÄNDERT: Wir übergeben die ganze img_liste an Gemini
+                                feedback = ask_gemini_with_retry(client, feedback_prompt, img_liste)
                                 st.markdown("### 📋 Dein Coach-Feedback:")
                                 st.info(feedback)
                             except Exception as e:
