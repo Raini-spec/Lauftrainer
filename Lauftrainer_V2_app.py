@@ -774,10 +774,7 @@ else:
                         html += "<small>Lange Läufe (>15km, 8w): <b>" + l_txt + "</b></small><br>"
                         html += "<small>Längster Lauf (8w): <b>" + m_txt + "</b></small>"
                         html += "</div>"
-                        
                         st.markdown(html, unsafe_allow_html=True)
-                        # Hier werden die Werte sicher injiziert
-                        st.markdown(html_template.format(basis_text, lange_laeufe_text, max_dist_text), unsafe_allow_html=True)
                     with c_5k: st.metric("5 km", fmt_s(prog_5k_s))
                     with c_10k: st.metric("10 km", fmt_s(prog_10k_s))
                     with c_hm: st.metric("Halbmarathon", fmt_s(prog_21k_s))
