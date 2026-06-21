@@ -402,8 +402,12 @@ else:
                     with st.spinner("Schritt 1/2: Erstelle langfristigen Masterplan..."):
                         prompt_master = f"""
                         {zeit_befehl}
-                        Hier sind meine Strava-Daten:
+                        Hier sind meine kombinierten Aktivitätsdaten (Strava + manuell eingetragene Einheiten wie Krafttraining):
                         {st.session_state.strava_context}
+                        
+                        Aktueller Leistungsstatus (KI-Schätzung):
+                        - VO2max: {aktueller_vo2max}
+                        - Bisherige Prognosen: {st.session_state.get('leistungsstatus', {})}
                         
                         Ziel & Event-Kontext:
                         {ziel_kontext}
@@ -412,10 +416,8 @@ else:
                         {trainer_instructions}
                         
                         AUFGABE:
-                        1. Erstelle den adaptiven Wochenplan AUSSCHLIESSLICH für den Rest dieser aktuellen Woche und die komplette nächste Folgewoche (übersichtlich aufgeteilt in 'Woche 1 (Aktuell)' und 'Woche 2 (Kommende Woche)'). Kürze alle darauffolgenden Wochen bis zum Event weg.
-                        2. Extrahiere die heutige und morgige Einheit.
-                        3. Berechne den Leistungszustand.
-                        """
+                        Erstelle AUSSCHLIESSLICH den großen, langfristigen Masterplan im Markdown-Format. Richte den Plan zwingend auf das angegebene Trainingsziel aus! Berücksichtige sowohl meine Lauf-Leistungsfähigkeit als auch die dokumentierten Krafttrainingseinheiten (Regenerationszeiten!). Fasse dich prägnant, konzentriere dich auf die Wochenstruktur.
+                        """                 
                         mp_part = ask_gemini_with_retry(client, prompt_master, st.session_state.doc_images)
                     
                     with st.spinner("Schritt 2/2: Leite Wochenplan ab und synchronisiere Cloud-Tabelle..."):
