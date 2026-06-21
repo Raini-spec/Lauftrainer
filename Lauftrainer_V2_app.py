@@ -187,6 +187,16 @@ def ask_gemini_with_retry(client, prompt, images=[], max_retries=3):
             else:
                 raise e
     raise last_error
+def extract_date_from_gym_entry(entry):
+    try:
+        # Zieht das Datum zwischen den ersten beiden Sternchen heraus
+        date_str = entry.split("**")[1].strip()
+        return datetime.strptime(date_str, "%d.%m.%Y")
+    except:
+        # Fallback, falls das Format mal abweicht (z.B. alter Eintrag ohne Sterne)
+        return datetime(1900, 1, 1)
+
+
 
 # ==============================================================================
 # 🎛️ COCKPIT LINKS (STREAMLIT SIDEBAR)
@@ -466,23 +476,23 @@ else:
             
             # 1. Gym-Historie sammeln
             # --- GEÄNDERTER BEREICH FÜR DIE MANUELLEN EINHEITEN ---
-            # --- GEÄNDERTER BEREICH FÜR DIE MANUELLEN EINHEITEN ---
+            # --- MANUELLE EINHEITEN MIT GEFIXTER SORTIERUNG ---
             gym_hist = st.session_state.physio_data.get("gym_history", [])
             
             if gym_hist:
                 st.markdown("### 🏋️‍♂️ Manuelle Einheiten (Studio/Gym)")
-                # Wir gehen die Liste rückwärts durch (Neueste oben), nutzen aber enumerate für den echten Index
-                for index, g in reversed(list(enumerate(gym_hist))):
-                    # Wir bauen 2 Spalten: Links der Text, rechts ein kleiner Lösch-Button
+                
+                # Wir nutzen die global definierte Funktion für die Sortierung
+                sortierte_liste = list(enumerate(gym_hist))
+                sortierte_liste.sort(key=lambda x: extract_date_from_gym_entry(x[1]), reverse=True)
+                
+                for original_index, g in sortierte_liste:
                     c_text, c_del = st.columns([6, 1])
                     with c_text:
                         st.success(g)
                     with c_del:
-                        # Ein eindeutiger Key verhindert Streamlit-Konflikte
-                        if st.button("🗑️", key=f"del_gym_{index}"):
-                            # Eintrag aus der Liste im Session State löschen
-                            st.session_state.physio_data["gym_history"].pop(index)
-                            # Änderungen sofort in Supabase sichern
+                        if st.button("🗑️", key=f"del_gym_{original_index}"):
+                            st.session_state.physio_data["gym_history"].pop(original_index)
                             save_all_to_supabase()
                             st.toast("Einheit wurde gelöscht!")
                             time.sleep(0.5)
