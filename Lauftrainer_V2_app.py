@@ -501,7 +501,12 @@ else:
 
                 # Wir koppeln jeden Eintrag an seinen originalen Index und sortieren dann nach Datum (neueste zuerst)
                 sortierte_liste = list(enumerate(gym_hist))
-                sortierte_liste.sort(key=lambda x: extract_date(x[1]), reverse=True)
+                # Wir koppeln jeden Eintrag an seinen originalen Index
+                sortierte_liste = list(enumerate(gym_hist))
+                sortierte_liste.sort(key=lambda x: extract_date_from_gym_entry(x[1]), reverse=True)
+                
+                for original_index, g in sortierte_liste:
+                    c_text, c_del = st.columns([6, 1])
                 
                 for original_index, g in sortierte_liste:
                     c_text, c_del = st.columns([6, 1])
