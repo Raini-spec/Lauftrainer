@@ -474,67 +474,18 @@ else:
         if load_and_format_strava_data():
             all_activities = []
             
-            # 1. Gym-Historie sammeln
-            # --- GEÄNDERTER BEREICH FÜR DIE MANUELLEN EINHEITEN ---
-            # --- MANUELLE EINHEITEN MIT GEFIXTER SORTIERUNG ---
-            gym_hist = st.session_state.physio_data.get("gym_history", [])
-            
-            if gym_hist:
-                st.markdown("### 🏋️‍♂️ Manuelle Einheiten (Studio/Gym)")
-                
-                # Wir nutzen die global definierte Funktion für die Sortierung
-                sortierte_liste = list(enumerate(gym_hist))
-                sortierte_liste.sort(key=lambda x: extract_date_from_gym_entry(x[1]), reverse=True)
-                
-                for original_index, g in sortierte_liste:
-                    c_text, c_del = st.columns([6, 1])
-                    with c_text:
-                        st.success(g)
-                    with c_del:
-                        if st.button("🗑️", key=f"del_gym_{original_index}"):
-                            st.session_state.physio_data["gym_history"].pop(original_index)
-                            save_all_to_supabase()
-                            st.toast("Einheit wurde gelöscht!")
-                            time.sleep(0.5)
-                            st.rerun()
-                st.write("---")
-
-                # Wir koppeln jeden Eintrag an seinen originalen Index und sortieren dann nach Datum (neueste zuerst)
-                sortierte_liste = list(enumerate(gym_hist))
-                # Wir koppeln jeden Eintrag an seinen originalen Index
-                sortierte_liste = list(enumerate(gym_hist))
-                for original_index, g in sortierte_liste:
-                    c_text, c_del = st.columns([6, 1])
-                    with c_text:
-                        st.success(g)
-                    with c_del:
-                        # Wir säubern den Text von Sonderzeichen, um einen sicheren, eindeutigen Key zu bauen
-                        safe_string = "".join(c for c in g if c.isalnum())[:20]
-                        unique_key = f"del_gym_{original_index}_{safe_string}"
-                        
-                        if st.button("🗑️", key=unique_key):
-                            st.session_state.physio_data["gym_history"].pop(original_index)
-                            save_all_to_supabase()
-                            st.toast("Einheit wurde gelöscht!")
-                            time.sleep(0.5)
-                            st.rerun()
-                st.write("---")
-                
-            # 2. Aktivitäten sammeln (Strava + Manuell)
-            # A) Strava-Daten hinzufügen
+            # 1. Strava-Daten hinzufügen
             for act in st.session_state.letzte_10_aktivitaeten:
                 all_activities.append({"typ": "strava", "text": act, "original_index": None})
             
-            # B) Manuelle Gym-Daten hinzufügen
+            # 2. Manuelle Gym-Daten hinzufügen
             gym_hist = st.session_state.physio_data.get("gym_history", [])
             for idx, gym_act in enumerate(gym_hist):
-                # Die Sterne (**) sind in den Gym-Daten schon drin, deshalb sieht das Format ähnlich aus
                 all_activities.append({"typ": "gym", "text": gym_act, "original_index": idx})
                 
             # 3. Gemeinsame Sortier-Funktion
             def get_date_for_mixed_list(item):
                 try:
-                    # Wir nutzen wieder das Muster: "**18.06.2026** | ..."
                     date_str = item["text"].split("**")[1].strip()
                     if len(date_str) == 8: 
                         return datetime.strptime(date_str, "%d.%m.%y")
@@ -549,7 +500,6 @@ else:
             # 5. UI Ausgabe (Gemischt & Sortiert)
             for item in all_activities:
                 if item["typ"] == "gym":
-                    # Bei manuellen Einheiten zeichnen wir den Lösch-Button daneben
                     c_text, c_del = st.columns([6, 1])
                     with c_text:
                         st.success(f"🏋️‍♂️ {item['text']}")
@@ -564,7 +514,6 @@ else:
                             time.sleep(0.5)
                             st.rerun()
                 else:
-                    # Strava-Einheiten bleiben wie gewohnt blau (ohne Lösch-Button)
                     st.info(item['text'])
                     
         else:
