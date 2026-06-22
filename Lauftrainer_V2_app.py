@@ -520,27 +520,53 @@ else:
                             st.rerun()
                 st.write("---")
                 
-            # 2. Strava-Historie sammeln
+            # 2. Aktivitäten sammeln (Strava + Manuell)
+            # A) Strava-Daten hinzufügen
             for act in st.session_state.letzte_10_aktivitaeten:
-                all_activities.append({"typ": "strava", "text": act})
+                all_activities.append({"typ": "strava", "text": act, "original_index": None})
+            
+            # B) Manuelle Gym-Daten hinzufügen
+            gym_hist = st.session_state.physio_data.get("gym_history", [])
+            for idx, gym_act in enumerate(gym_hist):
+                # Die Sterne (**) sind in den Gym-Daten schon drin, deshalb sieht das Format ähnlich aus
+                all_activities.append({"typ": "gym", "text": gym_act, "original_index": idx})
                 
-            # 3. Sortier-Funktion (Liest das Datum "DD.MM.YY" oder "DD.MM.YYYY" aus)
-            def get_date(item):
+            # 3. Gemeinsame Sortier-Funktion
+            def get_date_for_mixed_list(item):
                 try:
+                    # Wir nutzen wieder das Muster: "**18.06.2026** | ..."
                     date_str = item["text"].split("**")[1].strip()
-                    if len(date_str) == 8: return datetime.strptime(date_str, "%d.%m.%y")
-                    else: return datetime.strptime(date_str, "%d.%m.%Y")
-                except: return datetime.min # Fallback bei Fehlern
+                    if len(date_str) == 8: 
+                        return datetime.strptime(date_str, "%d.%m.%y")
+                    else: 
+                        return datetime.strptime(date_str, "%d.%m.%Y")
+                except: 
+                    return datetime.min
                 
             # 4. Liste chronologisch sortieren (neueste zuerst)
-            all_activities.sort(key=get_date, reverse=True)
+            all_activities.sort(key=get_date_for_mixed_list, reverse=True)
             
-            # 5. UI Ausgabe
+            # 5. UI Ausgabe (Gemischt & Sortiert)
             for item in all_activities:
                 if item["typ"] == "gym":
-                    st.success(f"🏋️‍♂️ {item['text']}")
+                    # Bei manuellen Einheiten zeichnen wir den Lösch-Button daneben
+                    c_text, c_del = st.columns([6, 1])
+                    with c_text:
+                        st.success(f"🏋️‍♂️ {item['text']}")
+                    with c_del:
+                        safe_str = "".join(c for c in item['text'] if c.isalnum())[:15]
+                        btn_key = f"del_mix_{item['original_index']}_{safe_str}"
+                        
+                        if st.button("🗑️", key=btn_key):
+                            st.session_state.physio_data["gym_history"].pop(item["original_index"])
+                            save_all_to_supabase()
+                            st.toast("Einheit wurde gelöscht!")
+                            time.sleep(0.5)
+                            st.rerun()
                 else:
+                    # Strava-Einheiten bleiben wie gewohnt blau (ohne Lösch-Button)
                     st.info(item['text'])
+                    
         else:
             st.warning("Konnte Strava-Daten nicht abrufen.")
             
