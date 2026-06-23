@@ -275,23 +275,31 @@ if not gemini_key or not access_token:
         in_client_id = st.text_input("2. Strava Client-ID", key="setup_id")
         in_client_secret = st.text_input("3. Geheimer Clientschlüssel", type="password", key="setup_secret")
         
+        # NEU: Intervals.icu Zugangsdaten
+        in_intervals_id = st.text_input("4. Intervals.icu Athleten-ID", key="setup_int_id")
+        in_intervals_key = st.text_input("5. Intervals.icu API-Key", type="password", key="setup_int_key")
+        
         if in_client_id:
             auth_url = f"https://www.strava.com/oauth/authorize?client_id={in_client_id}&response_type=code&redirect_uri=http://localhost/exchange_token&approval_prompt=force&scope=activity:read_all"
             st.markdown(f"[👉 Klicke hier, um Strava freizugeben]({auth_url})")
             
-        in_code = st.text_input("4. Kopiere den Code aus der Adresszeile (nach dem Autorisieren) hier hinein", key="setup_code")
+        in_code = st.text_input("6. Kopiere den Code aus der Adresszeile (nach dem Autorisieren) hier hinein", key="setup_code")
         
         if st.button("🚀 App aktivieren & Konfiguration erstellen", key="btn_setup"):
-            if in_pw and in_gemini and in_client_id and in_client_secret and in_code:
+            # ABFRAGE ERWEITERT um Intervals-Felder
+            if in_pw and in_gemini and in_client_id and in_client_secret and in_code and in_intervals_id and in_intervals_key:
                 url = "https://www.strava.com/oauth/token"
                 payload = {"client_id": in_client_id, "client_secret": in_client_secret, "code": in_code, "grant_type": "authorization_code"}
                 res = requests.post(url, data=payload)
                 if res.status_code == 200:
                     res_data = res.json()
+                    # NEUE KEYS IN DAS PAKET AUFGENOMMEN
                     neues_paket = {
                         "master_pw": in_pw, "gemini_key": in_gemini, "client_id": in_client_id, 
                         "client_secret": in_client_secret, "access_token": res_data["access_token"], 
-                        "refresh_token": res_data["refresh_token"], "expires_at": res_data["expires_at"]
+                        "refresh_token": res_data["refresh_token"], "expires_at": res_data["expires_at"],
+                        "intervals_id": in_intervals_id,
+                        "intervals_key": in_intervals_key
                     }
                     st.session_state["auto_config_json"] = json.dumps(neues_paket, indent=2)
                     st.success("App erfolgreich konfiguriert!")
@@ -323,7 +331,17 @@ else:
     ===STATUS_END===
     ===HEUTE_START===\nHier steht nur die heutige Einheit in 1-2 Sätzen.\n===HEUTE_END===
     ===MORGEN_START===\nHier steht nur die morgige Einheit in 1-2 Sätzen.\n===MORGEN_END===
-    ===WOCHENPLAN_START===\n### 📅 Dein adaptiver Wochenplan\n*Markdown-Plan...*\n===WOCHENPLAN_END===
+    ===WOCHENPLAN_START===
+    ### 📅 Dein adaptiver Wochenplan
+    
+    #### Woche 1 (Aktuell)
+    [Montag bis Sonntag eintragen]
+    
+    #### Woche 2 (Kommende Woche)
+    [Montag bis Sonntag eintragen]
+    
+    🛑 STOPP! HIER ENDET DIE AUSGABE. KEINE WOCHE 3 ODER WEITER GENERIEREN!
+    ===WOCHENPLAN_END===
     """
 
     # Kontext auslesen für KI
