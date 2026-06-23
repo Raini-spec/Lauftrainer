@@ -386,7 +386,7 @@ else:
                             
                             prompt = f"""
                             {zeit_befehl}
-                            🚨 DATUMS-REGEL: Die untenstehenden Strava-Daten sind HISTORIE der Vergangenheit! Leite den heutigen Tag AUSSCHLIESSLICH aus dem SYSTEM-ZEITANKER ab.
+                            🚨 DATUMS-REGEL: Die untenstehenden Strava-Daten sind HISTORIE! Wenn es in dieser aktuellen Woche bereits vergangene Tage gibt (z.B. gestern war Montag, heute ist Dienstag), trage das an diesen Tagen absolvierte Training aus den Strava-Daten als "✅ Bereits absolviert" in Woche 1 ein.
                             
                             Masterplan:\n{st.session_state.trainingsplan}
                             Strava (Bisherige Historie):\n{st.session_state.strava_context}
@@ -397,7 +397,7 @@ else:
                             1. LÄNGE DES PLANS: Du darfst EXAKT NUR ZWEI WOCHEN ausgeben (Woche 1 und Woche 2). Es ist dir strengstens verboten, Woche 3 oder spätere Wochen zu generieren. Schneide alles danach rigoros ab!
                             2. Extrahiere die heutige und morgige Einheit.
                             3. Berechne den Leistungszustand.
-                            VO2MAX-REGEL: Der letzte berechnete VO2max war {aktueller_vo2max}. Passe ihn basierend auf den neuen Strava-Daten maximal um +/- 0.5 Punkte an (Glättung). Wenn er 'Nicht berechnet' ist, schätze ihn realistisch ein.
+                            VO2MAX-REGEL: Der letzte berechnete VO2max war {aktueller_vo2max}. Passe ihn basierend auf den neuen Strava-Daten maximal um +/- 0.5 Punkte an.
                             {output_format_alle}
                             """
                             text = ask_gemini_with_retry(client, prompt, st.session_state.doc_images)
@@ -451,7 +451,7 @@ else:
                     with st.spinner("Schritt 2/2: Leite Wochenplan ab und synchronisiere Cloud-Tabelle..."):
                         prompt_woche = f"""
                         {zeit_befehl}
-                        🚨 DATUMS-REGEL: Die untenstehenden Strava-Daten sind HISTORIE der Vergangenheit! Leite den heutigen Tag AUSSCHLIESSLICH aus dem SYSTEM-ZEITANKER ab.
+                        🚨 DATUMS-REGEL: Die untenstehenden Strava-Daten sind HISTORIE! Wenn es in dieser aktuellen Woche bereits vergangene Tage gibt (z.B. gestern war Montag, heute ist Dienstag), trage das an diesen Tagen absolvierte Training aus den Strava-Daten als "✅ Bereits absolviert" in Woche 1 ein.
                         
                         Basierend auf diesem Masterplan:\n{mp_part}
                         Kombinierte Aktivitätsdaten (Strava + Manuell):\n{st.session_state.strava_context}
@@ -459,12 +459,10 @@ else:
                         Ziel & Event:\n{ziel_kontext}
                         
                         AUFGABE:
-                        1. Erstelle den adaptiven Wochenplan AUSSCHLIESSLICH für den Rest dieser aktuellen Woche und die komplette nächste Folgewoche (übersichtlich aufgeteilt in 'Woche 1 (Aktuell)' und 'Woche 2 (Kommende Woche)'). Kürze alle darauffolgenden Wochen bis zum Event weg.
+                        1. LÄNGE DES PLANS: Du darfst EXAKT NUR ZWEI WOCHEN ausgeben (Woche 1 und Woche 2). Es ist dir strengstens verboten, Woche 3 oder spätere Wochen zu generieren. Schneide alles danach rigoros ab!
                         2. Extrahiere die heutige und morgige Einheit.
                         3. Berechne den Leistungszustand.
-                        
-                        VO2MAX-REGEL: Der letzte berechnete VO2max war {aktueller_vo2max}. Passe ihn basierend auf den neuen Daten maximal um +/- 0.5 Punkte an (Glättung). Wenn er 'Nicht berechnet' ist, schätze ihn realistisch ein.
-                        
+                        VO2MAX-REGEL: Der letzte berechnete VO2max war {aktueller_vo2max}. Passe ihn basierend auf den neuen Daten maximal um +/- 0.5 Punkte an.
                         {output_format_alle}
                         """
                         text = ask_gemini_with_retry(client, prompt_woche)
