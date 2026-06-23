@@ -342,6 +342,13 @@ else:
     
     🛑 STOPP! HIER ENDET DIE AUSGABE. KEINE WOCHE 3 ODER WEITER GENERIEREN!
     ===WOCHENPLAN_END===
+    ===WEEK_JSON_START===
+    [
+      {"date": "YYYY-MM-DD", "name": "Name des Laufs", "description": "Warmup\\n- 10m\\n\\nHauptlauf\\n- 5km z2", "type": "Run"},
+      {"date": "YYYY-MM-DD", "name": "Krafttraining", "description": "Core & Beine", "type": "Gym"}
+    ]
+    ⚠️ WICHTIG: Erstelle diesen JSON-Auszug NUR für echte Trainingseinheiten (keine reinen Ruhetage). Nutze das korrekte ISO-Datumsformat basierend auf dem aktuellen Wochentag.
+    ===WEEK_JSON_END===
     """
 
     # Kontext auslesen für KI
@@ -371,7 +378,57 @@ else:
 
         if st.session_state.get("wochenplan"):
             st.markdown(st.session_state.wochenplan)
-            
+            # --- START: EXPORT BUTTON FÜR DIE UHR ---
+            st.divider()
+            if st.button("⌚ Plan an Garmin senden (via Intervals.icu)", type="secondary"):
+                int_id = auth_data.get("intervals_id")
+                int_key = auth_data.get("intervals_key")
+                
+                if not int_id or not int_key:
+                    st.error("⚠️ Intervals-Zugangsdaten fehlen! Bitte App-Reset durchführen und im Setup (Manuelle Einrichtung) eintragen.")
+                else:
+                    with st.spinner("Übertrage Trainingseinheiten an die Cloud..."):
+                        # Datum berechnen (mit der gleichen +2h Logik wie oben)
+                        jetzt_uhr = datetime.now() + timedelta(hours=2)
+                        heute_iso = jetzt_uhr.strftime("%Y-%m-%dT08:00:00")
+                        morgen_iso = (jetzt_uhr + timedelta(days=1)).strftime("%Y-%m-%dT08:00:00")
+                        
+                        url = f"https://intervals.icu/api/v1/athlete/{int_id}/events"
+                        erfolg_count = 0
+                        fehler_meldungen = []
+                        
+                        # 1. HEUTE senden (Wenn es kein reiner Ruhetag ist)
+                        heute_text = st.session_state.get("heute_training", "")
+                        if heute_text and "ruhetag" not in heute_text.lower():
+                            payload_heute = {
+                                "category": "WORKOUT", "start_date_local": heute_iso,
+                                "type": "Run", "name": "KI Training (Heute)",
+                                "description": heute_text
+                            }
+                            res_h = requests.post(url, json=payload_heute, auth=("API_KEY", int_key))
+                            if res_h.status_code == 200: erfolg_count += 1
+                            else: fehler_meldungen.append(f"Heute: {res_h.text}")
+                                
+                        # 2. MORGEN senden (Wenn es kein reiner Ruhetag ist)
+                        morgen_text = st.session_state.get("morgen_training", "")
+                        if morgen_text and "ruhetag" not in morgen_text.lower():
+                            payload_morgen = {
+                                "category": "WORKOUT", "start_date_local": morgen_iso,
+                                "type": "Run", "name": "KI Training (Morgen)",
+                                "description": morgen_text
+                            }
+                            res_m = requests.post(url, json=payload_morgen, auth=("API_KEY", int_key))
+                            if res_m.status_code == 200: erfolg_count += 1
+                            else: fehler_meldungen.append(f"Morgen: {res_m.text}")
+                                
+                        if erfolg_count > 0:
+                            st.success(f"✅ {erfolg_count} Training(s) erfolgreich gesendet! Öffne jetzt die Garmin App zum Synchronisieren.")
+                        elif fehler_meldungen:
+                            st.error(f"Fehler bei der Übertragung: {fehler_meldungen}")
+                        else:
+                            st.info("ℹ️ Keine aktiven Trainings (außer Ruhetagen) zum Übertragen gefunden.")
+            st.divider()
+            # --- ENDE: EXPORT BUTTON ---
             # HIER SETZT DER NEUE CODE EIN (Eingerückt mit 8 Leerzeichen):
             if st.button("🔄 Wochenplan & Status aktualisieren", type="primary"):
                 if load_and_format_strava_data():
