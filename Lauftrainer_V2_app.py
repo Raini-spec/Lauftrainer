@@ -394,7 +394,7 @@ else:
                             Instruktionen:\n{trainer_instructions}
                             
                             AUFGABE: 
-                            1. Erstelle den adaptiven Wochenplan AUSSCHLIESSLICH für den Rest dieser aktuellen Woche und die komplette nächste Folgewoche (übersichtlich aufgeteilt in 'Woche 1 (Aktuell)' und 'Woche 2 (Kommende Woche)'). Schneide alle weiteren Wochen bis zum Wettkampf rigoros ab – dafür gibt es den Masterplan!
+                            1. LÄNGE DES PLANS: Du darfst EXAKT NUR ZWEI WOCHEN ausgeben (Woche 1 und Woche 2). Es ist dir strengstens verboten, Woche 3 oder spätere Wochen zu generieren. Schneide alles danach rigoros ab!
                             2. Extrahiere die heutige und morgige Einheit.
                             3. Berechne den Leistungszustand.
                             VO2MAX-REGEL: Der letzte berechnete VO2max war {aktueller_vo2max}. Passe ihn basierend auf den neuen Strava-Daten maximal um +/- 0.5 Punkte an (Glättung). Wenn er 'Nicht berechnet' ist, schätze ihn realistisch ein.
