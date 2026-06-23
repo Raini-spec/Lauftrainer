@@ -329,8 +329,12 @@ else:
     ===STATUS_START===
     {"vo2max": "Zahl", "prognose_5k": "Zeit", "prognose_10k": "Zeit", "prognose_21k": "Zeit", "belastung": "Kurzer Text", "belastung_prozent": "Zahl 0-100"}
     ===STATUS_END===
-    ===HEUTE_START===\nHier steht nur die heutige Einheit in 1-2 Sätzen.\n===HEUTE_END===
-    ===MORGEN_START===\nHier steht nur die morgige Einheit in 1-2 Sätzen.\n===MORGEN_END===
+    ===HEUTE_START===
+    Hier steht nur die heutige Einheit in 1-2 Sätzen.
+    ===HEUTE_END===
+    ===MORGEN_START===
+    Hier steht nur die morgige Einheit in 1-2 Sätzen.
+    ===MORGEN_END===
     ===WOCHENPLAN_START===
     ### 📅 Dein adaptiver Wochenplan
     
@@ -340,6 +344,7 @@ else:
     #### Woche 2 (Kommende Woche)
     [Montag bis Sonntag eintragen]
     
+    🛑 STOPP! HIER ENDET DIE AUSGABE. KEINE WOCHE 3 ODER WEITER GENERIEREN!
     ===WOCHENPLAN_END===
     ===WEEK_JSON_START===
     [
@@ -917,6 +922,7 @@ else:
                     WICHTIGE REGELN FÜR DEN CHAT:
                     1. Beantworte die Frage als Coach kurz und empathisch.
                     2. Wenn der Nutzer möchte, dass du das Training anpasst (z. B. Einheiten verschieben, hinzufügen, streichen), schreibe den KOMPLETTEN neuen Wochenplan zwingend zwischen die Tags ===WOCHENPLAN_START=== und ===WOCHENPLAN_END===.
+                    ZUSÄTZLICH musst du dann auch die Blöcke ===HEUTE_START===/===HEUTE_END=== und ===MORGEN_START===/===MORGEN_END=== mit der jeweils neuen Einheit für heute und morgen befüllen!
                     3. Schreibe außerhalb dieser Tags nur deine kurze Antwort für den Chat.
                     
                     Aktueller Plan:\n{st.session_state.get('wochenplan')}
