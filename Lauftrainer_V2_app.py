@@ -429,6 +429,44 @@ else:
                             st.info("ℹ️ Keine aktiven Trainings (außer Ruhetagen) zum Übertragen gefunden.")
             st.divider()
             # --- ENDE: EXPORT BUTTON ---
+            # --- START: EXPORT BUTTON FÜR DIE GANZE WOCHE ---
+            if st.button("📅 Gesamten 2-Wochen-Plan an Garmin senden", type="secondary"):
+                int_id = auth_data.get("intervals_id")
+                int_key = auth_data.get("intervals_key")
+                plan_json_str = st.session_state.get("wochenplan_json", "[]")
+                
+                if not int_id or not int_key:
+                    st.error("⚠️ Intervals-Zugangsdaten fehlen! Bitte App-Reset durchführen und im Setup eintragen.")
+                elif plan_json_str == "[]":
+                    st.warning("⚠️ Kein strukturierter Wochenplan im Speicher vorhanden. Bitte aktualisiere den Wochenplan zuerst.")
+                else:
+                    with st.spinner("Übertrage alle Einheiten an Intervals.icu..."):
+                        try:
+                            trainings_liste = json.loads(plan_json_str)
+                            url = f"https://intervals.icu/api/v1/athlete/{int_id}/events"
+                            erfolgreich = 0
+                            
+                            for einheit in trainings_liste:
+                                payload = {
+                                    "category": "WORKOUT",
+                                    "start_date_local": f"{einheit['date']}T08:00:00",
+                                    "type": einheit.get("type", "Run"),
+                                    "name": einheit.get("name", "KI Training"),
+                                    "description": einheit.get("description", "")
+                                }
+                                res = requests.post(url, json=payload, auth=("API_KEY", int_key))
+                                if res.status_code == 200:
+                                    erfolgreich += 1
+                            
+                            if erfolgreich > 0:
+                                st.success(f"🚀 Phänomenal! {erfolgreich} Trainingseinheiten wurden taggenau in deinen Garmin-Kalender übertragen!")
+                            else:
+                                st.error("Übertragung fehlgeschlagen. Bitte API-Schnittstelle prüfen.")
+                        except Exception as e:
+                            st.error(f"Fehler beim Verarbeiten der Trainingsdaten: {e}")
+            st.divider()
+            # --- ENDE: EXPORT BUTTON FÜR DIE GANZE WOCHE ---
+            
             # HIER SETZT DER NEUE CODE EIN (Eingerückt mit 8 Leerzeichen):
             if st.button("🔄 Wochenplan & Status aktualisieren", type="primary"):
                 if load_and_format_strava_data():
@@ -463,6 +501,8 @@ else:
                             h_part = text.split("===HEUTE_START===")[1].split("===HEUTE_END===")[0].strip() if "===HEUTE_START===" in text else ""
                             m_part = text.split("===MORGEN_START===")[1].split("===MORGEN_END===")[0].strip() if "===MORGEN_START===" in text else ""
                             w_part = text.split("===WOCHENPLAN_START===")[1].split("===WOCHENPLAN_END===")[0].strip() if "===WOCHENPLAN_START===" in text else ""
+                            w_json_part = text.split("===WEEK_JSON_START===")[1].split("===WEEK_JSON_END===")[0].strip() if "===WEEK_JSON_START===" in text else "[]"
+                            st.session_state.wochenplan_json = w_json_part # Im Session State merken
                             
                             s_json = json.loads(status_part) if "vo2max" in status_part else {}
                             s_json["letztes_update"] = datetime.now().strftime("%d.%m.%Y")
@@ -523,7 +563,9 @@ else:
                         {output_format_alle}
                         """
                         text = ask_gemini_with_retry(client, prompt_woche)
-                        
+                        w_part = text.split("===WOCHENPLAN_START===")[1].split("===WOCHENPLAN_END===")[0].strip() if "===WOCHENPLAN_START===" in text else ""
+                        w_json_part = text.split("===WEEK_JSON_START===")[1].split("===WEEK_JSON_END===")[0].strip() if "===WEEK_JSON_START===" in text else "[]"
+                        st.session_state.wochenplan_json = w_json_part # Im Session State merken
                         w_part = text.split("===WOCHENPLAN_START===")[1].split("===WOCHENPLAN_END===")[0].strip() if "===WOCHENPLAN_START===" in text else ""
                         h_part = text.split("===HEUTE_START===")[1].split("===HEUTE_END===")[0].strip() if "===HEUTE_START===" in text else ""
                         m_part = text.split("===MORGEN_START===")[1].split("===MORGEN_END===")[0].strip() if "===MORGEN_START===" in text else ""
