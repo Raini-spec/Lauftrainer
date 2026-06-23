@@ -216,7 +216,7 @@ with st.sidebar:
         st.caption(f"Letztes Update: {status.get('letztes_update', '---')}")
         st.metric("Geschätzter VO2max", f"⚡ {status.get('vo2max', '---')}")
         
-        st.info("ℹ️ **Hinweis:** Dieser Wert ist eine KI-Schätzung. Ein lang anhaltender Anstieg liegt oft an einem anfangs zu gering geschätzten Startwert.")
+        st.info("ℹ️ **Hinweis:** Dieser Wert ist eine KI-Schätzung.")
         
         st.markdown("**🎯 Gemini-Prognosen:**")
         st.markdown(f"🥇 **5 km:** &nbsp;&nbsp; `{status.get('prognose_5k', '---')}`")
@@ -340,7 +340,6 @@ else:
     #### Woche 2 (Kommende Woche)
     [Montag bis Sonntag eintragen]
     
-    🛑 STOPP! HIER ENDET DIE AUSGABE. KEINE WOCHE 3 ODER WEITER GENERIEREN!
     ===WOCHENPLAN_END===
     ===WEEK_JSON_START===
     [
