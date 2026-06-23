@@ -931,15 +931,23 @@ else:
                     
                     resp = ask_gemini_with_retry(client, chat_prompt)
                     
-                    # FILTER-LOGIK: Fische den Plan aus der Antwort heraus
+                    # FILTER-LOGIK: Fische den Plan und die Boxen aus der Antwort heraus
+                    h_part = resp.split("===HEUTE_START===")[1].split("===HEUTE_END===")[0].strip() if "===HEUTE_START===" in resp else None
+                    m_part = resp.split("===MORGEN_START===")[1].split("===MORGEN_END===")[0].strip() if "===MORGEN_START===" in resp else None
+
                     if "===WOCHENPLAN_START===" in resp and "===WOCHENPLAN_END===" in resp:
                         neuer_plan = resp.split("===WOCHENPLAN_START===")[1].split("===WOCHENPLAN_END===")[0].strip()
                         
-                        # Speichere den neuen Plan direkt in die Datenbank und den Session State!
-                        save_all_to_supabase(woche_text=neuer_plan)
+                        # Speichere den neuen Plan sowie die neuen Boxen-Texte direkt ab!
+                        save_all_to_supabase(woche_text=neuer_plan, heute_text=h_part, morgen_text=m_part)
                         
                         # Schneide den Plan aus der angezeigten Chat-Nachricht heraus
                         plan_block = "===WOCHENPLAN_START===" + resp.split("===WOCHENPLAN_START===")[1].split("===WOCHENPLAN_END===")[0] + "===WOCHENPLAN_END==="
+                        # Entferne auch die Box-Blöcke aus der Chat-Antwort
+                        for block_tag in ["===HEUTE_START===", "===HEUTE_END===", "===MORGEN_START===", "===MORGEN_END==="]:
+                            if block_tag in resp:
+                                resp = resp.replace(resp.split(block_tag)[0] if block_tag.endswith("END===") else "", "") # Vereinfacht cleanen
+                        
                         chat_antwort = resp.replace(plan_block, "").strip()
                         
                         # Falls die KI nur den Plan ohne Text geschickt hat:
