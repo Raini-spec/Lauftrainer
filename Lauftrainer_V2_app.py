@@ -258,7 +258,7 @@ if not gemini_key or not access_token:
     tab1, tab2 = st.tabs(["📁 Login (Datei)", "⌨️ Manuelle Einrichtung"])
     
     with tab1:
-        config_file = st.file_uploader("Konfigurations-Datei (.json)", type=["json"])
+        config_file = st.file_uploader("Konfigurations-Datei (.json)")
         master_pw = st.text_input("Master-Passwort", type="password", key="login_pw")
         if st.button("🔐 Entsperren"):
             if config_file and master_pw:
