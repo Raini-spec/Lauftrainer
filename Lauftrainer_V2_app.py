@@ -17,7 +17,7 @@ cookie_manager = stx.CookieManager()
 st.write("") 
 
 st.title("🏃‍♂️🚴 KI Trainer: Strava & Gemini")
-st.caption("🔒 **Version 5.02** – Bugfix Supabase-URL & Dropdown-Menü")
+st.caption("🔒 **Version 5.03** – Bugfix Prompts & Session State")
 
 # ==============================================================================
 # 🧠 SESSION STATE & CLOUD DATABASE (SUPABASE)
@@ -30,7 +30,6 @@ if "doc_texts" not in st.session_state: st.session_state.doc_texts = []
 if "doc_images" not in st.session_state: st.session_state.doc_images = []
 if "gym_images" not in st.session_state: st.session_state.gym_images = []
 if "plan_images" not in st.session_state: st.session_state.plan_images = []
-if "doc_texts" not in st.session_state: st.session_state.doc_texts = []    
 if "ansicht" not in st.session_state: st.session_state.ansicht = "Wochenplan"
 if "physio_data" not in st.session_state: st.session_state.physio_data = {}
 if "run_update" not in st.session_state: st.session_state.run_update = False
@@ -40,7 +39,6 @@ auth_data = json.loads(auth_cookie) if isinstance(auth_cookie, str) else (auth_c
 if "temp_auth_data" in st.session_state: auth_data = st.session_state.temp_auth_data
 
 try:
-    # AUTOMATISCHER BUGFIX: Entfernt versehentliche Schrägstriche am Ende der URL
     clean_url = st.secrets["SUPABASE_URL"].rstrip("/")
     supabase: Client = create_client(clean_url, st.secrets["SUPABASE_KEY"])
 except Exception as e:
@@ -95,6 +93,7 @@ def save_all_to_supabase(plan_text=None, woche_text=None, status_json=None, heut
     except Exception as e:
         st.error(f"Fehler beim Speichern in der Cloud-Datenbank: {e}")
         return False
+
 if gemini_key := auth_data.get("gemini_key"):
     if "trainingsplan" not in st.session_state:
         load_all_from_supabase()
@@ -151,7 +150,6 @@ def load_and_format_strava_data():
                         except: dt_str = date
                         last_ten.append(f"**{dt_str}** | {t_de}: {d:.1f} km *({info})*")
                         
-                # NEU: Gym-Historie für die KI an die Strava-Daten anhängen!
                 gym_hist = st.session_state.physio_data.get("gym_history", [])
                 if gym_hist:
                     data += "\n--- MANUELLE GYM-EINHEITEN ---\n" + "\n".join(gym_hist)
@@ -182,24 +180,19 @@ def ask_gemini_with_retry(client, prompt, images=[], max_retries=5):
         except Exception as e:
             last_error = e
             if "503" in str(e) or "429" in str(e):
-                # NEU: Intelligente Wartezeit (5s, dann 10s, dann 15s...)
                 wartezeit = 5 * (attempt + 1)
                 time.sleep(wartezeit)
                 continue
             else:
                 raise e
     raise last_error
-    raise last_error
+
 def extract_date_from_gym_entry(entry):
     try:
-        # Zieht das Datum zwischen den ersten beiden Sternchen heraus
         date_str = entry.split("**")[1].strip()
         return datetime.strptime(date_str, "%d.%m.%Y")
     except:
-        # Fallback, falls das Format mal abweicht (z.B. alter Eintrag ohne Sterne)
         return datetime(1900, 1, 1)
-
-
 
 # ==============================================================================
 # 🎛️ COCKPIT LINKS (STREAMLIT SIDEBAR)
@@ -245,17 +238,13 @@ with st.sidebar:
 
     st.divider()
     if st.button("⚠️ App-Reset (Alle Daten löschen)", use_container_width=True, type="primary"):
-        # 1. Zuerst prüfen, ob der Cookie da ist
         aktueller_cookie = cookie_manager.get("auth_paket")
-        
-        # 2. Nur löschen, wenn er wirklich existiert
         if aktueller_cookie is not None:
             try:
                 cookie_manager.delete("auth_paket")
             except:
-                pass # Falls er sich im Bruchteil einer Sekunde in Luft auflöst
+                pass 
                 
-        # 3. Session State rigoros leeren und neu laden
         st.session_state.clear()
         time.sleep(0.5)
         st.rerun()
@@ -288,7 +277,6 @@ if not gemini_key or not access_token:
         in_client_id = st.text_input("2. Strava Client-ID", key="setup_id")
         in_client_secret = st.text_input("3. Geheimer Clientschlüssel", type="password", key="setup_secret")
         
-        # NEU: Intervals.icu Zugangsdaten
         in_intervals_id = st.text_input("4. Intervals.icu Athleten-ID", key="setup_int_id")
         in_intervals_key = st.text_input("5. Intervals.icu API-Key", type="password", key="setup_int_key")
         
@@ -299,14 +287,12 @@ if not gemini_key or not access_token:
         in_code = st.text_input("6. Kopiere den Code aus der Adresszeile (nach dem Autorisieren) hier hinein", key="setup_code")
         
         if st.button("🚀 App aktivieren & Konfiguration erstellen", key="btn_setup"):
-            # ABFRAGE ERWEITERT um Intervals-Felder
             if in_pw and in_gemini and in_client_id and in_client_secret and in_code and in_intervals_id and in_intervals_key:
                 url = "https://www.strava.com/oauth/token"
                 payload = {"client_id": in_client_id, "client_secret": in_client_secret, "code": in_code, "grant_type": "authorization_code"}
                 res = requests.post(url, data=payload)
                 if res.status_code == 200:
                     res_data = res.json()
-                    # NEUE KEYS IN DAS PAKET AUFGENOMMEN
                     neues_paket = {
                         "master_pw": in_pw, "gemini_key": in_gemini, "client_id": in_client_id, 
                         "client_secret": in_client_secret, "access_token": res_data["access_token"], 
@@ -337,7 +323,7 @@ else:
     client = genai.Client(api_key=gemini_key)
     if "temp_auth_data" in st.session_state:
         cookie_manager.set("auth_paket", json.dumps(st.session_state.temp_auth_data), key="cookie_set_main_auth")
-        del st.session_state.temp_auth_data # <-- DIESE ZEILE ERGÄNZEN!
+        del st.session_state.temp_auth_data 
 
     output_format_alle = """
     ===STATUS_START===
@@ -369,7 +355,6 @@ else:
     ===WEEK_JSON_END===
     """
 
-    # Kontext auslesen für KI
     ziel_typ = st.session_state.physio_data.get("ziel_typ", "Formaufbau")
     trainer_instructions = st.session_state.physio_data.get("instructions", "Keine speziellen Anweisungen.")
     aktueller_vo2max = st.session_state.get('leistungsstatus', {}).get('vo2max', 'Nicht berechnet')
@@ -382,7 +367,6 @@ else:
         ziel_kontext += f"**Angestrebte Zielzeit:** {st.session_state.physio_data.get('zielzeit', '?')}\n"
 
     # --- ANSICHT: WOCHENPLAN ---
-
     if st.session_state.ansicht == "Wochenplan":
         st.header("📅 Aktueller Wochenplan")
         
@@ -396,7 +380,6 @@ else:
 
         if st.session_state.get("wochenplan"):
             st.markdown(st.session_state.wochenplan)
-            # --- START: EXPORT BUTTON FÜR DIE UHR ---
             st.divider()
             if st.button("⌚ Plan an Garmin senden (via Intervals.icu)", type="secondary"):
                 int_id = auth_data.get("intervals_id")
@@ -406,7 +389,6 @@ else:
                     st.error("⚠️ Intervals-Zugangsdaten fehlen! Bitte App-Reset durchführen und im Setup (Manuelle Einrichtung) eintragen.")
                 else:
                     with st.spinner("Übertrage Trainingseinheiten an die Cloud..."):
-                        # Datum berechnen (mit der gleichen +2h Logik wie oben)
                         jetzt_uhr = datetime.now() + timedelta(hours=2)
                         heute_iso = jetzt_uhr.strftime("%Y-%m-%dT08:00:00")
                         morgen_iso = (jetzt_uhr + timedelta(days=1)).strftime("%Y-%m-%dT08:00:00")
@@ -415,7 +397,6 @@ else:
                         erfolg_count = 0
                         fehler_meldungen = []
                         
-                        # 1. HEUTE senden (Wenn es kein reiner Ruhetag ist)
                         heute_text = st.session_state.get("heute_training", "")
                         if heute_text and "ruhetag" not in heute_text.lower():
                             payload_heute = {
@@ -427,7 +408,6 @@ else:
                             if res_h.status_code == 200: erfolg_count += 1
                             else: fehler_meldungen.append(f"Heute: {res_h.text}")
                                 
-                        # 2. MORGEN senden (Wenn es kein reiner Ruhetag ist)
                         morgen_text = st.session_state.get("morgen_training", "")
                         if morgen_text and "ruhetag" not in morgen_text.lower():
                             payload_morgen = {
@@ -446,8 +426,7 @@ else:
                         else:
                             st.info("ℹ️ Keine aktiven Trainings (außer Ruhetagen) zum Übertragen gefunden.")
             st.divider()
-            # --- ENDE: EXPORT BUTTON ---
-            # --- START: EXPORT BUTTON FÜR DIE GANZE WOCHE ---
+            
             if st.button("📅 Gesamten 2-Wochen-Plan an Garmin senden", type="secondary"):
                 int_id = auth_data.get("intervals_id")
                 int_key = auth_data.get("intervals_key")
@@ -483,45 +462,54 @@ else:
                         except Exception as e:
                             st.error(f"Fehler beim Verarbeiten der Trainingsdaten: {e}")
             st.divider()
-            # --- ENDE: EXPORT BUTTON FÜR DIE GANZE WOCHE ---
             
-            # HIER SETZT DER NEUE CODE EIN (Eingerückt mit 8 Leerzeichen):
-            # Der Button aktiviert jetzt nur noch den Zustand im Hintergrund
-            if st.button("🔄 Wochenplan & Status aktualisieren", type="primary"):
-                st.session_state.run_update = True
+        if st.button("🔄 Wochenplan & Status aktualisieren", type="primary"):
+            st.session_state.run_update = True
 
-            # Die Logik läuft völlig unabhängig vom Button-Klick-Status
-            if st.session_state.run_update:
-                if load_and_format_strava_data():
-                    try:
-                        with st.spinner("Berechne adaptiven Wochenplan und speichere in Cloud..."):
-                            # (Hier bleibt dein exakter Prompt- und KI-Code vollständig unverändert)
-                            # ...
-                            text = ask_gemini_with_retry(client, prompt, st.session_state.doc_images)
-                            
-                            status_part = text.split("===STATUS_START===")[1].split("===STATUS_END===")[0].strip() if "===STATUS_START===" in text else "{}"
-                            h_part = text.split("===HEUTE_START===")[1].split("===HEUTE_END===")[0].strip() if "===HEUTE_START===" in text else ""
-                            m_part = text.split("===MORGEN_START===")[1].split("===MORGEN_END===")[0].strip() if "===MORGEN_START===" in text else ""
-                            w_part = text.split("===WOCHENPLAN_START===")[1].split("===WOCHENPLAN_END===")[0].strip() if "===WOCHENPLAN_START===" in text else ""
-                            w_json_part = text.split("===WEEK_JSON_START===")[1].split("===WEEK_JSON_END===")[0].strip() if "===WEEK_JSON_START===" in text else "[]"
-                            st.session_state.wochenplan_json = w_json_part
-                            
-                            s_json = json.loads(status_part) if "vo2max" in status_part else {}
-                            s_json["letztes_update"] = datetime.now().strftime("%d.%m.%Y")
-                            
-                            save_all_to_supabase(woche_text=w_part, status_json=s_json, heute_text=h_part, morgen_text=m_part)
-                            
-                            # WICHTIG AM ENDE: Zustand zurücksetzen und neu laden
-                            st.session_state.run_update = False
-                            st.rerun()
-                    except Exception as e: 
-                        st.error(f"Fehler bei KI-Verarbeitung: {e}")
+        if st.session_state.run_update:
+            if load_and_format_strava_data():
+                try:
+                    with st.spinner("Berechne adaptiven Wochenplan und speichere in Cloud..."):
+                        prompt = f"""
+                        {zeit_befehl}
+                        🚨 DATUMS-REGEL: Die untenstehenden Strava-Daten sind HISTORIE! Wenn es in dieser aktuellen Woche bereits vergangene Tage gibt (z.B. gestern war Montag, heute ist Dienstag), trage das an diesen Tagen absolvierte Training aus den Strava-Daten als "✅ Bereits absolviert" in Woche 1 ein.
+                        
+                        Masterplan:\n{st.session_state.trainingsplan}
+                        Strava (Bisherige Historie):\n{st.session_state.strava_context}
+                        Ziel & Event:\n{ziel_kontext}
+                        Instruktionen:\n{trainer_instructions}
+                        
+                        AUFGABE: 
+                        1. LÄNGE DES PLANS: Du darfst EXAKT NUR ZWEI WOCHEN ausgeben (Woche 1 und Woche 2). Es ist dir strengstens verboten, Woche 3 oder spätere Wochen zu generieren. Schneide alles danach rigoros ab!
+                        2. Extrahiere die heutige und morgige Einheit.
+                        3. Berechne den Leistungszustand.
+                        VO2MAX-REGEL: Der letzte berechnete VO2max war {aktueller_vo2max}. Passe ihn basierend auf den neuen Strava-Daten maximal um +/- 0.5 Punkte an.
+                        {output_format_alle}
+                        """
+                        text = ask_gemini_with_retry(client, prompt, st.session_state.doc_images)
+                        
+                        status_part = text.split("===STATUS_START===")[1].split("===STATUS_END===")[0].strip() if "===STATUS_START===" in text else "{}"
+                        h_part = text.split("===HEUTE_START===")[1].split("===HEUTE_END===")[0].strip() if "===HEUTE_START===" in text else ""
+                        m_part = text.split("===MORGEN_START===")[1].split("===MORGEN_END===")[0].strip() if "===MORGEN_START===" in text else ""
+                        w_part = text.split("===WOCHENPLAN_START===")[1].split("===WOCHENPLAN_END===")[0].strip() if "===WOCHENPLAN_START===" in text else ""
+                        w_json_part = text.split("===WEEK_JSON_START===")[1].split("===WEEK_JSON_END===")[0].strip() if "===WEEK_JSON_START===" in text else "[]"
+                        st.session_state.wochenplan_json = w_json_part
+                        
+                        s_json = json.loads(status_part) if "vo2max" in status_part else {}
+                        s_json["letztes_update"] = datetime.now().strftime("%d.%m.%Y")
+                        
+                        save_all_to_supabase(woche_text=w_part, status_json=s_json, heute_text=h_part, morgen_text=m_part)
+                        
                         st.session_state.run_update = False
-                else: 
-                    st.error("Konnte Strava-Daten nicht laden.")
+                        st.rerun()
+                except Exception as e: 
+                    st.error(f"Fehler bei KI-Verarbeitung: {e}")
                     st.session_state.run_update = False
+            else: 
+                st.error("Konnte Strava-Daten nicht laden.")
+                st.session_state.run_update = False
                     
-      # --- ANSICHT: MASTERPLAN ---
+    # --- ANSICHT: MASTERPLAN ---
     elif st.session_state.ansicht == "Masterplan":
         st.header("🏆 Langfristiger Masterplan")
         if not st.session_state.physio_data.get("ziel_typ"):
@@ -574,8 +562,7 @@ else:
                         text = ask_gemini_with_retry(client, prompt_woche)
                         w_part = text.split("===WOCHENPLAN_START===")[1].split("===WOCHENPLAN_END===")[0].strip() if "===WOCHENPLAN_START===" in text else ""
                         w_json_part = text.split("===WEEK_JSON_START===")[1].split("===WEEK_JSON_END===")[0].strip() if "===WEEK_JSON_START===" in text else "[]"
-                        st.session_state.wochenplan_json = w_json_part # Im Session State merken
-                        w_part = text.split("===WOCHENPLAN_START===")[1].split("===WOCHENPLAN_END===")[0].strip() if "===WOCHENPLAN_START===" in text else ""
+                        st.session_state.wochenplan_json = w_json_part 
                         h_part = text.split("===HEUTE_START===")[1].split("===HEUTE_END===")[0].strip() if "===HEUTE_START===" in text else ""
                         m_part = text.split("===MORGEN_START===")[1].split("===MORGEN_END===")[0].strip() if "===MORGEN_START===" in text else ""
                         status_part = text.split("===STATUS_START===")[1].split("===STATUS_END===")[0].strip() if "===STATUS_START===" in text else "{}"
@@ -598,16 +585,13 @@ else:
         if load_and_format_strava_data():
             all_activities = []
             
-            # 1. Strava-Daten hinzufügen
             for act in st.session_state.letzte_10_aktivitaeten:
                 all_activities.append({"typ": "strava", "text": act, "original_index": None})
             
-            # 2. Manuelle Gym-Daten hinzufügen
             gym_hist = st.session_state.physio_data.get("gym_history", [])
             for idx, gym_act in enumerate(gym_hist):
                 all_activities.append({"typ": "gym", "text": gym_act, "original_index": idx})
                 
-            # 3. Gemeinsame Sortier-Funktion
             def get_date_for_mixed_list(item):
                 try:
                     date_str = item["text"].split("**")[1].strip()
@@ -618,10 +602,8 @@ else:
                 except: 
                     return datetime.min
                 
-            # 4. Liste chronologisch sortieren (neueste zuerst)
             all_activities.sort(key=get_date_for_mixed_list, reverse=True)
             
-            # 5. UI Ausgabe (Gemischt & Sortiert)
             for item in all_activities:
                 if item["typ"] == "gym":
                     c_text, c_del = st.columns([6, 1])
@@ -670,7 +652,6 @@ else:
                                 zusatz = f" 💡 *{nutzer_anmerkung}*" if nutzer_anmerkung else ""
                                 eintrag = f"{ergebnis.strip()}{zusatz}"
                                 
-                                # NEU: Das Training dauerhaft in die Cloud-Historie speichern!
                                 if "gym_history" not in st.session_state.physio_data:
                                     st.session_state.physio_data["gym_history"] = []
                                 st.session_state.physio_data["gym_history"].append(eintrag)
@@ -684,11 +665,9 @@ else:
                 
         st.write("---")
         
-        # NEU: Die manuelle Eingabemaske zum Aufklappen
         with st.expander("✍️ Manuelle Aktivität hinzufügen (ohne Bild)"):
                 with st.form("manual_gym_form", clear_on_submit=True):
                     c_datum, c_sport = st.columns(2)
-                    # Nimmt als Standardwert automatisch das heutige Datum
                     with c_datum: m_datum = st.text_input("Datum (z.B. 18.06.2026)", value=datetime.now().strftime("%d.%m.%Y"))
                     with c_sport: m_sport = st.selectbox("Sportart / Aktivität", ["Lauf", "Krafttraining", "Yoga / Mobility", "Schwimmen", "Wandern", "Ski / Wintersport", "Alltag / Sonstiges"])
                     
@@ -699,14 +678,12 @@ else:
                     m_notiz = st.text_input("Notiz / Details (z.B. 'Fokus auf Beine und Core')")
                     
                     if st.form_submit_button("Aktivität speichern"):
-                        # Textbausteine clever zusammensetzen
                         kcal_text = f" (*{m_kcal} kcal*)" if m_kcal else ""
                         dauer_text = f", {m_dauer}" if m_dauer else ""
                         notiz_text = f" - {m_notiz}" if m_notiz else ""
                         
                         neuer_eintrag = f"**{m_datum}** | {m_sport}{dauer_text}{notiz_text}{kcal_text}"
                         
-                        # In die dauerhafte Cloud-Historie schieben
                         if "gym_history" not in st.session_state.physio_data:
                             st.session_state.physio_data["gym_history"] = []
                         st.session_state.physio_data["gym_history"].append(neuer_eintrag)
@@ -718,12 +695,10 @@ else:
     
         with st.expander("🤖 Workout-Analyse & Coach-Feedback"):
                 with st.form("workout_analysis_form"):
-                    # ÄNDERUNG HIER: Mehrfach-Upload erlauben
                     analysis_uploads = st.file_uploader("Screenshots der Trainingseinheit hochladen", accept_multiple_files=True, type=["png", "jpg", "jpeg"], key="analysis_upload")
                     submit_analysis = st.form_submit_button("Workout tiefenanalysieren")
                     
                     if submit_analysis and analysis_uploads:
-                        # Alle hochgeladenen Bilder in eine Liste packen (maximal 5)
                         img_liste = [Image.open(f) for f in analysis_uploads[:5]]
                         with st.spinner("Coach analysiert deine Übungen..."):
                             
@@ -741,7 +716,6 @@ else:
                             3. Gib ein kurzes, prägnantes Feedback (max. 4 Sätze) und einen Tipp, worauf ich bei den nächsten Einheiten des Plans achten sollte."""
                             
                             try:
-                                # HIER GEÄNDERT: Wir übergeben die ganze img_liste an Gemini
                                 feedback = ask_gemini_with_retry(client, feedback_prompt, img_liste)
                                 st.markdown("### 📋 Dein Coach-Feedback:")
                                 st.info(feedback)
@@ -757,7 +731,6 @@ else:
         aktuelles_ziel = st.session_state.physio_data.get("ziel_typ", "Formaufbau")
         index_ziel = ziel_optionen.index(aktuelles_ziel) if aktuelles_ziel in ziel_optionen else 1
         
-        # NEU: Selectbox (Dropdown) statt Radio-Buttons
         new_ziel_typ = st.selectbox("Was ist dein aktueller Fokus?", ziel_optionen, index=index_ziel)
         
         new_event_name = st.session_state.physio_data.get("event_name", "")
@@ -796,7 +769,6 @@ else:
             if save_all_to_supabase():
                 st.success("Erfolgreich in Supabase für dein Profil gespeichert!")
         
-        # HIER REFORMIERT: Liegt nun außerhalb des Buttons, bleibt dauerhaft sichtbar
         st.subheader("📄 Hintergrundwissen & Trainingspläne")
         plan_uploads = st.file_uploader("Lade bis zu 5 Dokumente hoch (Pläne, PDFs, Bilder)", accept_multiple_files=True, type=["png", "jpg", "jpeg", "pdf"])
 
@@ -824,9 +796,8 @@ else:
 
         if st.session_state.strava_context:
             try:
-                # 1. Daten aus Strava-Kontext extrahieren & filtern (nur Läufe, letzte 8 Wochen)
                 acht_wochen_her = datetime.now() - timedelta(weeks=8)
-                all_paces = [] # Pace in s/km
+                all_paces = [] 
                 long_runs_count = 0
                 max_dist = 0
                 
@@ -845,16 +816,15 @@ else:
                                     m, s = map(int, pace_str.split("."))
                                     pace_in_seconds = (m * 60) + s
                                     
-                                    if pace_in_seconds > 180 and dist > 3: # Schneller als 3:00, länger als 3km
+                                    if pace_in_seconds > 180 and dist > 3:
                                         all_paces.append(pace_in_seconds)
                                         if dist >= 15:
                                             long_runs_count += 1
                         except: continue
 
-                # 2. Prognose berechnen
                 if all_paces:
                     all_paces.sort()
-                    top_x = max(1, int(len(all_paces) * 0.2)) # Die besten 20%
+                    top_x = max(1, int(len(all_paces) * 0.2)) 
                     basis_pace_s = sum(all_paces[:top_x]) / top_x
                     
                     riegel_slope = 1.07 
@@ -880,15 +850,12 @@ else:
                         h, m = divmod(m, 60)
                         return f"{h:d}:{m:02d}:{s:02d}" if h > 0 else f"{m:d}:{s:02d}"
 
-                    # 3. UI Darstellung
                     c_info, c_5k, c_10k, c_hm = st.columns([2,1,1,1])
                     with c_info:
-                        # Vorbereitung als reine, sichere Textstücke
                         b_txt = fmt_s(basis_pace_s) + " min/km"
                         l_txt = str(long_runs_count)
                         m_txt = "{:.1f} km".format(max_dist)
                         
-                        # Absolut sichere Verkettung ohne Zeilenumbrüche im String
                         html = "<div style='background-color: #f0f2f6; padding: 10px; border-radius: 5px; border-left: 5px solid #ff4b4b;'>"
                         html += "<small>Basis (Top 20% Pace):</small><br><b>" + b_txt + "</b><br>"
                         html += "<small>Lange Läufe (>15km, 8w): <b>" + l_txt + "</b></small><br>"
@@ -909,6 +876,7 @@ else:
                 st.error(f"Fehler bei der Prognose: {e}")
         else:
             st.info("Konnte keine Strava-Daten finden. Lade im Wochenplan einmal neu!")
+            
     # ==============================================================================
     # 💬 CHAT-INTERFAZ (COACH TALK)
     # ==============================================================================
@@ -936,30 +904,24 @@ else:
                     
                     resp = ask_gemini_with_retry(client, chat_prompt)
                     
-                    # FILTER-LOGIK: Fische den Plan und die Boxen aus der Antwort heraus
                     h_part = resp.split("===HEUTE_START===")[1].split("===HEUTE_END===")[0].strip() if "===HEUTE_START===" in resp else None
                     m_part = resp.split("===MORGEN_START===")[1].split("===MORGEN_END===")[0].strip() if "===MORGEN_START===" in resp else None
 
                     if "===WOCHENPLAN_START===" in resp and "===WOCHENPLAN_END===" in resp:
                         neuer_plan = resp.split("===WOCHENPLAN_START===")[1].split("===WOCHENPLAN_END===")[0].strip()
                         
-                        # Speichere den neuen Plan sowie die neuen Boxen-Texte direkt ab!
                         save_all_to_supabase(woche_text=neuer_plan, heute_text=h_part, morgen_text=m_part)
                         
-                        # Schneide den Plan aus der angezeigten Chat-Nachricht heraus
                         plan_block = "===WOCHENPLAN_START===" + resp.split("===WOCHENPLAN_START===")[1].split("===WOCHENPLAN_END===")[0] + "===WOCHENPLAN_END==="
-                        # Entferne auch die Box-Blöcke aus der Chat-Antwort
                         for block_tag in ["===HEUTE_START===", "===HEUTE_END===", "===MORGEN_START===", "===MORGEN_END==="]:
                             if block_tag in resp:
-                                resp = resp.replace(resp.split(block_tag)[0] if block_tag.endswith("END===") else "", "") # Vereinfacht cleanen
+                                resp = resp.replace(resp.split(block_tag)[0] if block_tag.endswith("END===") else "", "") 
                         
                         chat_antwort = resp.replace(plan_block, "").strip()
                         
-                        # Falls die KI nur den Plan ohne Text geschickt hat:
                         if not chat_antwort:
                             chat_antwort = "✅ Ich habe deinen Wochenplan im Hintergrund aktualisiert. Schau gerne im Reiter 'Wochenplan' nach!"
                     else:
-                        # Wenn kein Plan geändert wurde, zeige einfach den normalen Text
                         chat_antwort = resp.strip()
 
                     st.markdown(chat_antwort)
