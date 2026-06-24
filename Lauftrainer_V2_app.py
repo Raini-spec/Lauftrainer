@@ -245,11 +245,17 @@ with st.sidebar:
 
     st.divider()
     if st.button("⚠️ App-Reset (Alle Daten löschen)", use_container_width=True, type="primary"):
-        try:
-            cookie_manager.delete("auth_paket")
-        except KeyError:
-            pass # Wenn der Cookie schon weg ist, einfach ignorieren!
-            
+        # 1. Zuerst prüfen, ob der Cookie da ist
+        aktueller_cookie = cookie_manager.get("auth_paket")
+        
+        # 2. Nur löschen, wenn er wirklich existiert
+        if aktueller_cookie is not None:
+            try:
+                cookie_manager.delete("auth_paket")
+            except:
+                pass # Falls er sich im Bruchteil einer Sekunde in Luft auflöst
+                
+        # 3. Session State rigoros leeren und neu laden
         st.session_state.clear()
         time.sleep(0.5)
         st.rerun()
