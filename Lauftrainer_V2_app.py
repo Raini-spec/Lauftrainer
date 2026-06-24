@@ -33,7 +33,8 @@ if "plan_images" not in st.session_state: st.session_state.plan_images = []
 if "doc_texts" not in st.session_state: st.session_state.doc_texts = []    
 if "ansicht" not in st.session_state: st.session_state.ansicht = "Wochenplan"
 if "physio_data" not in st.session_state: st.session_state.physio_data = {}
-
+if "run_update" not in st.session_state: st.session_state.run_update = False
+    
 auth_cookie = cookie_manager.get("auth_paket")
 auth_data = json.loads(auth_cookie) if isinstance(auth_cookie, str) else (auth_cookie or {})
 if "temp_auth_data" in st.session_state: auth_data = st.session_state.temp_auth_data
@@ -161,10 +162,9 @@ def load_and_format_strava_data():
         return False
     except: return False
 
-def ask_gemini_with_retry(client, prompt, images=[], max_retries=3):
+def ask_gemini_with_retry(client, prompt, images=[], max_retries=5):
     alle_bilder = images + st.session_state.get("gym_images", []) + st.session_state.get("plan_images", [])
     
-    # NEU: Der KI genau sagen, was die Anhänge bedeuten!
     if st.session_state.get("gym_images"):
         prompt += "\n\n⚠️ WICHTIGER HINWEIS ZU DEN BILDERN: Die angehängten Bilder zeigen zusätzliche Krafttrainingseinheiten inklusive verbrauchter Kalorien und spezifischer Übungen (siehe extrahierte Daten in den Aktivitäten). Berücksichtige diese Übungen und die zusätzliche muskuläre Belastung exakt bei der Regeneration und der Anpassung der kommenden Laufeinheiten im Wochenplan!"
     
@@ -182,10 +182,13 @@ def ask_gemini_with_retry(client, prompt, images=[], max_retries=3):
         except Exception as e:
             last_error = e
             if "503" in str(e) or "429" in str(e):
-                time.sleep(3)
+                # NEU: Intelligente Wartezeit (5s, dann 10s, dann 15s...)
+                wartezeit = 5 * (attempt + 1)
+                time.sleep(wartezeit)
                 continue
             else:
                 raise e
+    raise last_error
     raise last_error
 def extract_date_from_gym_entry(entry):
     try:
@@ -324,6 +327,7 @@ else:
     client = genai.Client(api_key=gemini_key)
     if "temp_auth_data" in st.session_state:
         cookie_manager.set("auth_paket", json.dumps(st.session_state.temp_auth_data), key="cookie_set_main_auth")
+        del st.session_state.temp_auth_data # <-- DIESE ZEILE ERGÄNZEN!
 
     output_format_alle = """
     ===STATUS_START===
@@ -472,33 +476,17 @@ else:
             # --- ENDE: EXPORT BUTTON FÜR DIE GANZE WOCHE ---
             
             # HIER SETZT DER NEUE CODE EIN (Eingerückt mit 8 Leerzeichen):
+            # Der Button aktiviert jetzt nur noch den Zustand im Hintergrund
             if st.button("🔄 Wochenplan & Status aktualisieren", type="primary"):
+                st.session_state.run_update = True
+
+            # Die Logik läuft völlig unabhängig vom Button-Klick-Status
+            if st.session_state.run_update:
                 if load_and_format_strava_data():
                     try:
                         with st.spinner("Berechne adaptiven Wochenplan und speichere in Cloud..."):
-                            # Datum JETZT direkt beim Klick berechnen
-                            tage = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
-                            monate = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"]
-                            jetzt = datetime.now() + timedelta(hours=2)
-                            heute_str = f"{tage[jetzt.weekday()]}, der {jetzt.day}. {monate[jetzt.month - 1]} {jetzt.year}"
-                            zeit_befehl = f"⚠️ WICHTIGER SYSTEM-ZEITANKER:\nHeute ist exakt {heute_str}!! Das ist die unumstößliche Realität."
-                            
-                            prompt = f"""
-                            {zeit_befehl}
-                            🚨 DATUMS-REGEL: Die untenstehenden Strava-Daten sind HISTORIE! Wenn es in dieser aktuellen Woche bereits vergangene Tage gibt (z.B. gestern war Montag, heute ist Dienstag), trage das an diesen Tagen absolvierte Training aus den Strava-Daten als "✅ Bereits absolviert" in Woche 1 ein.
-                            
-                            Masterplan:\n{st.session_state.trainingsplan}
-                            Strava (Bisherige Historie):\n{st.session_state.strava_context}
-                            Ziel & Event:\n{ziel_kontext}
-                            Instruktionen:\n{trainer_instructions}
-                            
-                            AUFGABE: 
-                            1. LÄNGE DES PLANS: Du darfst EXAKT NUR ZWEI WOCHEN ausgeben (Woche 1 und Woche 2). Es ist dir strengstens verboten, Woche 3 oder spätere Wochen zu generieren. Schneide alles danach rigoros ab!
-                            2. Extrahiere die heutige und morgige Einheit.
-                            3. Berechne den Leistungszustand.
-                            VO2MAX-REGEL: Der letzte berechnete VO2max war {aktueller_vo2max}. Passe ihn basierend auf den neuen Strava-Daten maximal um +/- 0.5 Punkte an.
-                            {output_format_alle}
-                            """
+                            # (Hier bleibt dein exakter Prompt- und KI-Code vollständig unverändert)
+                            # ...
                             text = ask_gemini_with_retry(client, prompt, st.session_state.doc_images)
                             
                             status_part = text.split("===STATUS_START===")[1].split("===STATUS_END===")[0].strip() if "===STATUS_START===" in text else "{}"
@@ -506,15 +494,22 @@ else:
                             m_part = text.split("===MORGEN_START===")[1].split("===MORGEN_END===")[0].strip() if "===MORGEN_START===" in text else ""
                             w_part = text.split("===WOCHENPLAN_START===")[1].split("===WOCHENPLAN_END===")[0].strip() if "===WOCHENPLAN_START===" in text else ""
                             w_json_part = text.split("===WEEK_JSON_START===")[1].split("===WEEK_JSON_END===")[0].strip() if "===WEEK_JSON_START===" in text else "[]"
-                            st.session_state.wochenplan_json = w_json_part # Im Session State merken
+                            st.session_state.wochenplan_json = w_json_part
                             
                             s_json = json.loads(status_part) if "vo2max" in status_part else {}
                             s_json["letztes_update"] = datetime.now().strftime("%d.%m.%Y")
                             
                             save_all_to_supabase(woche_text=w_part, status_json=s_json, heute_text=h_part, morgen_text=m_part)
+                            
+                            # WICHTIG AM ENDE: Zustand zurücksetzen und neu laden
+                            st.session_state.run_update = False
                             st.rerun()
-                    except Exception as e: st.error(f"Fehler bei KI-Verarbeitung: {e}")
-                else: st.error("Konnte Strava-Daten nicht laden.")
+                    except Exception as e: 
+                        st.error(f"Fehler bei KI-Verarbeitung: {e}")
+                        st.session_state.run_update = False
+                else: 
+                    st.error("Konnte Strava-Daten nicht laden.")
+                    st.session_state.run_update = False
                     
       # --- ANSICHT: MASTERPLAN ---
     elif st.session_state.ansicht == "Masterplan":
