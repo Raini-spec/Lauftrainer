@@ -175,7 +175,7 @@ def ask_gemini_with_retry(client, prompt, images=[], max_retries=5):
     last_error = None
     for attempt in range(max_retries):
         try:
-            resp = client.models.generate_content(model='gemini-3.1-flash-lite', contents=[prompt] + alle_bilder)
+            resp = client.models.generate_content(model='gemini-1.5-flash-latest', contents=[prompt] + alle_bilder)
             return resp.text
         except Exception as e:
             last_error = e
@@ -472,10 +472,15 @@ else:
                     with st.spinner("Berechne adaptiven Wochenplan und speichere in Cloud..."):
                         prompt = f"""
                         {zeit_befehl}
-                        🚨 DATUMS-REGEL: Die untenstehenden Strava-Daten sind HISTORIE! Wenn es in dieser aktuellen Woche bereits vergangene Tage gibt (z.B. gestern war Montag, heute ist Dienstag), trage das an diesen Tagen absolvierte Training aus den Strava-Daten als "✅ Bereits absolviert" in Woche 1 ein.
+                        
+                        🚨 STRIKTE DATEN- & LOGIK-REGELN:
+                        1. DATUMS-REGEL: Die Strava-Daten sind HISTORIE! Wenn es in dieser Woche bereits vergangene Tage gibt, trage die dort absolvierten Trainings aus den Strava-Daten exakt als "✅ Bereits absolviert" in Woche 1 ein.
+                        2. VALIDIERUNG: Vergleiche jeden Tag im Masterplan mit meinen Strava-Aktivitäten. Markiere als "✅ Bereits absolviert" NUR Tage, an denen ich laut Strava-Daten TATSÄCHLICH trainiert habe. Wenn für einen geplanten Tag KEINE Strava-Aktivität vorliegt, markiere ihn keinesfalls als absolviert!
+                        3. ADAPTION: Wenn ich laut Plan ein Training hatte, aber in Strava nichts dazu steht, markiere es als "❌ Ausgefallen / Nicht absolviert" und schlage eine Anpassung vor.
+                        4. BELASTUNGS-LOGIK: Wenn ich am Di/Mi hart gelaufen bin, ist das Training für morgen (Do) zu streichen oder durch aktive Erholung zu ersetzen. Analysiere meine Belastung der letzten 48h vor jeder Planung!
                         
                         Masterplan:\n{st.session_state.trainingsplan}
-                        Strava (Bisherige Historie):\n{st.session_state.strava_context}
+                        Strava-Historie:\n{st.session_state.strava_context}
                         Ziel & Event:\n{ziel_kontext}
                         Instruktionen:\n{trainer_instructions}
                         
