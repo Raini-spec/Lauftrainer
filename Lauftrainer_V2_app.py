@@ -175,7 +175,7 @@ def ask_gemini_with_retry(client, prompt, images=[], max_retries=5):
     last_error = None
     for attempt in range(max_retries):
         try:
-            resp = client.models.generate_content(model='gemini-3-flash', contents=[prompt] + alle_bilder)
+            resp = client.models.generate_content(model='gemini-3.1-pro-preview', contents=[prompt] + alle_bilder)
             return resp.text
         except Exception as e:
             last_error = e
