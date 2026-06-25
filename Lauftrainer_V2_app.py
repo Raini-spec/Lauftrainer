@@ -175,13 +175,18 @@ def ask_gemini_with_retry(client, prompt, images=[], max_retries=5):
     last_error = None
     for attempt in range(max_retries):
         try:
-            resp = client.models.generate_content(model='gemini-1.5-flash', contents=[prompt] + alle_bilder)
-            return resp.text
+            # HIER IST DIE MAGIE: Die neue Interactions API!
+            interaction = client.interactions.create(
+                model='gemini-3.5-flash', 
+                input=[prompt] + alle_bilder
+            )
+            # Und hier das neue Format für die Text-Antwort
+            return interaction.output_text
         except Exception as e:
             last_error = e
             if "503" in str(e) or "429" in str(e):
-                wartezeit = 5 * (attempt + 1)
-                time.sleep(wartezeit)
+                # Feste Pause bei Überlastung
+                time.sleep(30)
                 continue
             else:
                 raise e
