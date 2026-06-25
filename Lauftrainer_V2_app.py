@@ -11,6 +11,8 @@ import PyPDF2
 from PIL import Image 
 from supabase import create_client, Client
 import extra_streamlit_components as stx 
+import base64
+import io
 
 st.set_page_config(page_title="KI Trainer", layout="centered")
 cookie_manager = stx.CookieManager()
@@ -172,20 +174,43 @@ def ask_gemini_with_retry(client, prompt, images=[], max_retries=5):
     if st.session_state.get("doc_texts"):
         prompt += "\n\nHier ist der Text aus den hochgeladenen PDFs:\n" + "\n".join(st.session_state.doc_texts)
         
+    # NEU: Wir verpacken den Input exakt so, wie Gemini 3 es verlangt!
+    formatted_input = [{"type": "text", "text": prompt}]
+    
+    for img in alle_bilder:
+        buffered = io.BytesIO()
+        img_format = img.format if img.format else "JPEG"
+        
+        # Sicherstellen, dass das Bildformat konvertiert werden kann
+        try:
+            img.save(buffered, format=img_format)
+        except:
+            img = img.convert("RGB")
+            img.save(buffered, format="JPEG")
+            img_format = "JPEG"
+            
+        # Bild in den Base64-String umwandeln
+        img_b64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+        
+        # Das Bild als Dictionary anhängen
+        formatted_input.append({
+            "type": "image",
+            "data": img_b64,
+            "mime_type": f"image/{img_format.lower()}"
+        })
+        
     last_error = None
     for attempt in range(max_retries):
         try:
-            # HIER IST DIE MAGIE: Die neue Interactions API!
+            # Hier übergeben wir jetzt die sauber formatierte Liste
             interaction = client.interactions.create(
                 model='gemini-3.5-flash', 
-                input=[prompt] + alle_bilder
+                input=formatted_input
             )
-            # Und hier das neue Format für die Text-Antwort
             return interaction.output_text
         except Exception as e:
             last_error = e
             if "503" in str(e) or "429" in str(e):
-                # Feste Pause bei Überlastung
                 time.sleep(30)
                 continue
             else:
