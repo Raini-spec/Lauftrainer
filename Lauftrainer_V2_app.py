@@ -210,7 +210,8 @@ def ask_gemini_with_retry(client, prompt, images=[], max_retries=5):
             return interaction.output_text
         except Exception as e:
             last_error = e
-            if "503" in str(e) or "429" in str(e):
+            # HIER DIE 500 HINZUFÜGEN:
+            if "500" in str(e) or "503" in str(e) or "429" in str(e):
                 time.sleep(30)
                 continue
             else:
