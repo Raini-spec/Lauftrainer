@@ -1,6 +1,6 @@
 streamlit
 requests
-google-genai
+google-genai>=0.1.0
 PyPDF2
 pandas
 extra-streamlit-components
