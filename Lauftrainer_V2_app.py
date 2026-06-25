@@ -163,7 +163,7 @@ def load_and_format_strava_data():
         return False
     except: return False
 
-def ask_gemini_with_retry(client, prompt, images=[], max_retries=5):
+def ask_gemini_with_retry(client, prompt, images=[], max_retries=2):
     alle_bilder = images + st.session_state.get("gym_images", []) + st.session_state.get("plan_images", [])
     
     if st.session_state.get("gym_images"):
