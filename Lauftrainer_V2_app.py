@@ -163,7 +163,7 @@ def load_and_format_strava_data():
         return False
     except: return False
 
-def ask_gemini_with_retry(client, prompt, images=[], max_retries=2):
+def ask_gemini_with_retry(client, prompt, images=[], max_retries=1):
     alle_bilder = images + st.session_state.get("gym_images", []) + st.session_state.get("plan_images", [])
     
     if st.session_state.get("gym_images"):
@@ -196,22 +196,18 @@ def ask_gemini_with_retry(client, prompt, images=[], max_retries=2):
             "mime_type": f"image/{img_format.lower()}"
         })
         
-    last_error = None
-    for attempt in range(max_retries):
-        try:
-            interaction = client.interactions.create(
-                model='gemini-3.5-flash', 
-                input=formatted_input
-            )
-            return interaction.output_text
-        except Exception as e:
-            last_error = e
-            if "500" in str(e) or "503" in str(e) or "429" in str(e):
-                time.sleep(30)
-                continue
-            else:
-                raise e
-    raise last_error
+    # ==========================================================
+    # KEIN RETRY MEHR: Ein einziger direkter Versuch 
+    # MODELL: gemini-3-flash-preview (mit garantiertem Free-Tier)
+    # ==========================================================
+    try:
+        interaction = client.interactions.create(
+            model='gemini-3-flash-preview', 
+            input=formatted_input
+        )
+        return interaction.output_text
+    except Exception as e:
+        raise e
 
 def extract_date_from_gym_entry(entry):
     try:
