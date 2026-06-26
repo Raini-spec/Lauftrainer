@@ -70,12 +70,13 @@ def load_all_from_supabase():
     except Exception as e:
         pass
 
-def save_all_to_supabase(plan_text=None, woche_text=None, status_json=None, heute_text=None, morgen_text=None):
+def save_all_to_supabase(plan_text=None, woche_text=None, status_json=None, heute_text=None, morgen_text=None, wochenplan_json=None):
     if plan_text is not None: st.session_state.trainingsplan = plan_text
     if woche_text is not None: st.session_state.wochenplan = woche_text
     if status_json is not None: st.session_state.leistungsstatus = status_json
     if heute_text is not None: st.session_state.heute_training = heute_text
     if morgen_text is not None: st.session_state.morgen_training = morgen_text
+    if wochenplan_json is not None: st.session_state.wochenplan_json = wochenplan_json # NEU
 
     username = auth_data.get("master_pw", "default_user")
     
@@ -86,8 +87,10 @@ def save_all_to_supabase(plan_text=None, woche_text=None, status_json=None, heut
             "heute_training": st.session_state.get("heute_training", ""),
             "morgen_training": st.session_state.get("morgen_training", ""),
             "leistungsstatus": json.dumps(st.session_state.get("leistungsstatus", {})),
-            "physio_paket": json.dumps(st.session_state.get("physio_data", {}))
+            "physio_paket": json.dumps(st.session_state.get("physio_data", {})),
+            "wochenplan_json": st.session_state.get("wochenplan_json", "[]") # NEU
         }
+        # ... (Rest wie gehabt)
         
         for k, v in daten_aktuell.items():
             supabase.table("trainer_daten").delete().eq("username", username).eq("schluessel", k).execute()
@@ -573,7 +576,8 @@ else:
                         s_json = json.loads(status_part) if "vo2max" in status_part else {}
                         s_json["letztes_update"] = datetime.now().strftime("%d.%m.%Y")
                         
-                        save_all_to_supabase(woche_text=w_part, status_json=s_json, heute_text=h_part, morgen_text=m_part)
+                        # Ändere das save_all_to_supabase in LOGIK 2 (ca. Zeile 469):
+                        save_all_to_supabase(woche_text=w_part, status_json=s_json, heute_text=h_part, morgen_text=m_part, wochenplan_json=w_json_part)
                         
                         st.session_state.run_update = False
                         st.rerun()
