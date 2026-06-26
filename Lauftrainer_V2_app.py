@@ -19,7 +19,7 @@ cookie_manager = stx.CookieManager()
 st.write("") 
 
 st.title("🏃‍♂️🚴 KI Trainer: Strava & Gemini")
-st.caption("🔒 **Version 5.05** – Gemini 3 API & getrennte Updates")
+st.caption("🔒 **Version 5.06** – UI Feinschliff & Globale Updates")
 
 # ==============================================================================
 # 🧠 SESSION STATE & CLOUD DATABASE (SUPABASE)
@@ -196,10 +196,6 @@ def ask_gemini_with_retry(client, prompt, images=[], max_retries=1):
             "mime_type": f"image/{img_format.lower()}"
         })
         
-    # ==========================================================
-    # KEIN RETRY MEHR: Ein einziger direkter Versuch 
-    # MODELL: gemini-3-flash-preview (mit garantiertem Free-Tier)
-    # ==========================================================
     try:
         interaction = client.interactions.create(
             model='gemini-3-flash-preview', 
@@ -257,6 +253,10 @@ with st.sidebar:
         """, unsafe_allow_html=True)
     else:
         st.info("Kein aktiver Leistungsstatus im Speicher.")
+
+    st.write("")
+    if st.button("⚡ Status & Prognosen aktualisieren", use_container_width=True):
+        st.session_state.run_status_update = True
 
     st.divider()
     if st.button("⚠️ App-Reset (Alle Daten löschen)", use_container_width=True, type="primary"):
@@ -366,8 +366,9 @@ else:
     #### Woche 2 (Kommende Woche)
     [Montag bis Sonntag eintragen]
     
-    🛑 STOPP! HIER ENDET DIE AUSGABE. KEINE WOCHE 3 ODER WEITER GENERIEREN!
     ===WOCHENPLAN_END===
+    🛑 STOPP! HIER ENDET DIE AUSGABE ZUM PLAN. KEINE WOCHE 3 ODER WEITER GENERIEREN!
+    
     ===WEEK_JSON_START===
     [
       {"date": "YYYY-MM-DD", "name": "Name des Laufs", "description": "Warmup\\n- 10m\\n\\nHauptlauf\\n- 5km z2", "type": "Run"},
@@ -388,6 +389,42 @@ else:
         ziel_kontext += f"**Geplante Distanz:** {st.session_state.physio_data.get('distanz', '?')}\n"
         ziel_kontext += f"**Angestrebte Zielzeit:** {st.session_state.physio_data.get('zielzeit', '?')}\n"
 
+    # ==========================================
+    # LOGIK 1: GLOBALE STATUS-AKTUALISIERUNG
+    # ==========================================
+    if st.session_state.get("run_status_update"):
+        if load_and_format_strava_data():
+            try:
+                with st.spinner("Berechne Leistungsstatus & Prognosen..."):
+                    prompt_status = f"""
+                    {zeit_befehl}
+                    Berechne AUSSCHLIESSLICH den neuen Leistungszustand basierend auf meinen Strava-Daten.
+                    VO2MAX-REGEL: Der letzte berechnete VO2max war {aktueller_vo2max}. Passe ihn maximal um +/- 0.5 Punkte an.
+                    
+                    Strava-Historie:\n{st.session_state.strava_context}
+                    
+                    Gib AUSSCHLIESSLICH das JSON-Format aus:
+                    ===STATUS_START===
+                    {{"vo2max": "Zahl", "prognose_5k": "Zeit", "prognose_10k": "Zeit", "prognose_21k": "Zeit", "belastung": "Kurzer Text", "belastung_prozent": "Zahl 0-100"}}
+                    ===STATUS_END===
+                    """
+                    
+                    with st.expander("🔍 KI-Inspektor: Gesendeter Status-Prompt"):
+                        st.code(prompt_status)
+                        
+                    text = ask_gemini_with_retry(client, prompt_status, st.session_state.doc_images)
+                    status_part = text.split("===STATUS_START===")[1].split("===STATUS_END===")[0].strip() if "===STATUS_START===" in text else "{}"
+                    
+                    s_json = json.loads(status_part) if "vo2max" in status_part else {}
+                    s_json["letztes_update"] = datetime.now().strftime("%d.%m.%Y")
+                    
+                    save_all_to_supabase(status_json=s_json)
+                    st.session_state.run_status_update = False
+                    st.rerun()
+            except Exception as e:
+                st.error(f"Fehler: {e}")
+                st.session_state.run_status_update = False
+
     # --- ANSICHT: WOCHENPLAN ---
     if st.session_state.ansicht == "Wochenplan":
         st.header("📅 Aktueller Wochenplan")
@@ -404,186 +441,148 @@ else:
             st.markdown(st.session_state.wochenplan)
             st.divider()
             
-            if st.button("⌚ Plan an Garmin senden (via Intervals.icu)", type="secondary"):
-                int_id = auth_data.get("intervals_id")
-                int_key = auth_data.get("intervals_key")
-                
-                if not int_id or not int_key:
-                    st.error("⚠️ Intervals-Zugangsdaten fehlen! Bitte App-Reset durchführen und im Setup (Manuelle Einrichtung) eintragen.")
-                else:
-                    with st.spinner("Übertrage Trainingseinheiten an die Cloud..."):
-                        jetzt_uhr = datetime.now() + timedelta(hours=2)
-                        heute_iso = jetzt_uhr.strftime("%Y-%m-%dT08:00:00")
-                        morgen_iso = (jetzt_uhr + timedelta(days=1)).strftime("%Y-%m-%dT08:00:00")
-                        
-                        url = f"https://intervals.icu/api/v1/athlete/{int_id}/events"
-                        erfolg_count = 0
-                        fehler_meldungen = []
-                        
-                        heute_text = st.session_state.get("heute_training", "")
-                        if heute_text and "ruhetag" not in heute_text.lower():
-                            payload_heute = {
-                                "category": "WORKOUT", "start_date_local": heute_iso,
-                                "type": "Run", "name": "KI Training (Heute)",
-                                "description": heute_text
-                            }
-                            res_h = requests.post(url, json=payload_heute, auth=("API_KEY", int_key))
-                            if res_h.status_code == 200: erfolg_count += 1
-                            else: fehler_meldungen.append(f"Heute: {res_h.text}")
-                                
-                        morgen_text = st.session_state.get("morgen_training", "")
-                        if morgen_text and "ruhetag" not in morgen_text.lower():
-                            payload_morgen = {
-                                "category": "WORKOUT", "start_date_local": morgen_iso,
-                                "type": "Run", "name": "KI Training (Morgen)",
-                                "description": morgen_text
-                            }
-                            res_m = requests.post(url, json=payload_morgen, auth=("API_KEY", int_key))
-                            if res_m.status_code == 200: erfolg_count += 1
-                            else: fehler_meldungen.append(f"Morgen: {res_m.text}")
-                                
-                        if erfolg_count > 0:
-                            st.success(f"✅ {erfolg_count} Training(s) erfolgreich gesendet! Öffne jetzt die Garmin App zum Synchronisieren.")
-                        elif fehler_meldungen:
-                            st.error(f"Fehler bei der Übertragung: {fehler_meldungen}")
-                        else:
-                            st.info("ℹ️ Keine aktiven Trainings (außer Ruhetagen) zum Übertragen gefunden.")
-            st.divider()
-            
-            if st.button("📅 Gesamten 2-Wochen-Plan an Garmin senden", type="secondary"):
-                int_id = auth_data.get("intervals_id")
-                int_key = auth_data.get("intervals_key")
-                plan_json_str = st.session_state.get("wochenplan_json", "[]")
-                
-                if not int_id or not int_key:
-                    st.error("⚠️ Intervals-Zugangsdaten fehlen! Bitte App-Reset durchführen und im Setup eintragen.")
-                elif plan_json_str == "[]":
-                    st.warning("⚠️ Kein strukturierter Wochenplan im Speicher vorhanden. Bitte aktualisiere den Wochenplan zuerst.")
-                else:
-                    with st.spinner("Übertrage alle Einheiten an Intervals.icu..."):
-                        try:
-                            trainings_liste = json.loads(plan_json_str)
+            col_garmin1, col_garmin2 = st.columns(2)
+            with col_garmin1:
+                if st.button("⌚ Plan an Garmin senden (via Intervals.icu)", use_container_width=True, type="secondary"):
+                    int_id = auth_data.get("intervals_id")
+                    int_key = auth_data.get("intervals_key")
+                    
+                    if not int_id or not int_key:
+                        st.error("⚠️ Intervals-Zugangsdaten fehlen! Bitte App-Reset durchführen und im Setup eintragen.")
+                    else:
+                        with st.spinner("Übertrage Trainingseinheiten an die Cloud..."):
+                            jetzt_uhr = datetime.now() + timedelta(hours=2)
+                            heute_iso = jetzt_uhr.strftime("%Y-%m-%dT08:00:00")
+                            morgen_iso = (jetzt_uhr + timedelta(days=1)).strftime("%Y-%m-%dT08:00:00")
+                            
                             url = f"https://intervals.icu/api/v1/athlete/{int_id}/events"
-                            erfolgreich = 0
+                            erfolg_count = 0
+                            fehler_meldungen = []
                             
-                            for einheit in trainings_liste:
-                                payload = {
-                                    "category": "WORKOUT",
-                                    "start_date_local": f"{einheit['date']}T08:00:00",
-                                    "type": einheit.get("type", "Run"),
-                                    "name": einheit.get("name", "KI Training"),
-                                    "description": einheit.get("description", "")
+                            heute_text = st.session_state.get("heute_training", "")
+                            if heute_text and "ruhetag" not in heute_text.lower():
+                                payload_heute = {
+                                    "category": "WORKOUT", "start_date_local": heute_iso,
+                                    "type": "Run", "name": "KI Training (Heute)",
+                                    "description": heute_text
                                 }
-                                res = requests.post(url, json=payload, auth=("API_KEY", int_key))
-                                if res.status_code == 200:
-                                    erfolgreich += 1
-                            
-                            if erfolgreich > 0:
-                                st.success(f"🚀 Phänomenal! {erfolgreich} Trainingseinheiten wurden taggenau in deinen Garmin-Kalender übertragen!")
+                                res_h = requests.post(url, json=payload_heute, auth=("API_KEY", int_key))
+                                if res_h.status_code == 200: erfolg_count += 1
+                                else: fehler_meldungen.append(f"Heute: {res_h.text}")
+                                    
+                            morgen_text = st.session_state.get("morgen_training", "")
+                            if morgen_text and "ruhetag" not in morgen_text.lower():
+                                payload_morgen = {
+                                    "category": "WORKOUT", "start_date_local": morgen_iso,
+                                    "type": "Run", "name": "KI Training (Morgen)",
+                                    "description": morgen_text
+                                }
+                                res_m = requests.post(url, json=payload_morgen, auth=("API_KEY", int_key))
+                                if res_m.status_code == 200: erfolg_count += 1
+                                else: fehler_meldungen.append(f"Morgen: {res_m.text}")
+                                    
+                            if erfolg_count > 0:
+                                st.success(f"✅ {erfolg_count} Training(s) erfolgreich gesendet! Öffne jetzt die Garmin App zum Synchronisieren.")
+                            elif fehler_meldungen:
+                                st.error(f"Fehler bei der Übertragung: {fehler_meldungen}")
                             else:
-                                st.error("Übertragung fehlgeschlagen. Bitte API-Schnittstelle prüfen.")
-                        except Exception as e:
-                            st.error(f"Fehler beim Verarbeiten der Trainingsdaten: {e}")
+                                st.info("ℹ️ Keine aktiven Trainings (außer Ruhetagen) zum Übertragen gefunden.")
+            
+            with col_garmin2:
+                if st.button("📅 Gesamten 2-Wochen-Plan an Garmin senden", use_container_width=True, type="secondary"):
+                    int_id = auth_data.get("intervals_id")
+                    int_key = auth_data.get("intervals_key")
+                    plan_json_str = st.session_state.get("wochenplan_json", "[]")
+                    
+                    if not int_id or not int_key:
+                        st.error("⚠️ Intervals-Zugangsdaten fehlen! Bitte App-Reset durchführen und im Setup eintragen.")
+                    elif plan_json_str == "[]":
+                        st.warning("⚠️ Kein strukturierter Wochenplan im Speicher vorhanden. Bitte aktualisiere den Wochenplan zuerst.")
+                    else:
+                        with st.spinner("Übertrage alle Einheiten an Intervals.icu..."):
+                            try:
+                                trainings_liste = json.loads(plan_json_str)
+                                url = f"https://intervals.icu/api/v1/athlete/{int_id}/events"
+                                erfolgreich = 0
+                                
+                                for einheit in trainings_liste:
+                                    payload = {
+                                        "category": "WORKOUT",
+                                        "start_date_local": f"{einheit['date']}T08:00:00",
+                                        "type": einheit.get("type", "Run"),
+                                        "name": einheit.get("name", "KI Training"),
+                                        "description": einheit.get("description", "")
+                                    }
+                                    res = requests.post(url, json=payload, auth=("API_KEY", int_key))
+                                    if res.status_code == 200:
+                                        erfolgreich += 1
+                                
+                                if erfolgreich > 0:
+                                    st.success(f"🚀 Phänomenal! {erfolgreich} Trainingseinheiten wurden taggenau in deinen Garmin-Kalender übertragen!")
+                                else:
+                                    st.error("Übertragung fehlgeschlagen. Bitte API-Schnittstelle prüfen.")
+                            except Exception as e:
+                                st.error(f"Fehler beim Verarbeiten der Trainingsdaten: {e}")
+                                
             st.divider()
 
-            col_btn1, col_btn2 = st.columns(2)
-            with col_btn1:
-                if st.button("⚡ Nur Leistungsstatus aktualisieren", use_container_width=True):
-                    st.session_state.run_status_update = True
-            with col_btn2:
-                if st.button("🔄 Kompletten Wochenplan anpassen", type="primary", use_container_width=True):
-                    st.session_state.run_update = True
+        if st.button("🔄 Kompletten Wochenplan anpassen", type="primary", use_container_width=True):
+            st.session_state.run_update = True
 
-            # ==========================================
-            # LOGIK 1: NUR LEISTUNGSSTATUS AKTUALISIEREN
-            # ==========================================
-            if st.session_state.get("run_status_update"):
-                if load_and_format_strava_data():
-                    try:
-                        with st.spinner("Berechne Leistungsstatus..."):
-                            prompt_status = f"""
-                            {zeit_befehl}
-                            Berechne AUSSCHLIESSLICH den neuen Leistungszustand basierend auf meinen Strava-Daten.
-                            VO2MAX-REGEL: Der letzte berechnete VO2max war {aktueller_vo2max}. Passe ihn maximal um +/- 0.5 Punkte an.
+        # ==============================================================================
+        # LOGIK 2: KOMPLETTEN WOCHENPLAN ANPASSEN
+        # ==============================================================================
+        if st.session_state.get("run_update"):
+            if load_and_format_strava_data():
+                try:
+                    with st.spinner("Berechne adaptiven Wochenplan und speichere in Cloud..."):
+                        prompt = f"""
+                        {zeit_befehl}
+                        
+                        🚨 STRIKTE DATEN- & LOGIK-REGELN:
+                        1. DATUMS-REGEL: Die Strava-Daten sind HISTORIE! Wenn es in dieser Woche bereits vergangene Tage gibt, trage die dort absolvierten Trainings aus den Strava-Daten exakt als "✅ Bereits absolviert" in Woche 1 ein.
+                        2. VALIDIERUNG: Vergleiche jeden Tag im Masterplan mit meinen Strava-Aktivitäten. Markiere als "✅ Bereits absolviert" NUR Tage, an denen ich laut Strava-Daten TATSÄCHLICH trainiert habe. Wenn für einen geplanten Tag KEINE Strava-Aktivität vorliegt, markiere ihn keinesfalls als absolviert!
+                        3. ADAPTION: Wenn ich laut Plan ein Training hatte, aber in Strava nichts dazu steht, markiere es als "❌ Ausgefallen / Nicht absolviert" und schlage eine Anpassung vor.
+                        4. BELASTUNGS-LOGIK: Wenn ich am Di/Mi hart gelaufen bin, ist das Training für morgen (Do) zu streichen oder durch aktive Erholung zu ersetzen. Analysiere meine Belastung der letzten 48h vor jeder Planung!
+                        
+                        Masterplan:\n{st.session_state.trainingsplan}
+                        Strava-Historie:\n{st.session_state.strava_context}
+                        Ziel & Event:\n{ziel_kontext}
+                        Instruktionen:\n{trainer_instructions}
+                        
+                        AUFGABE: 
+                        1. LÄNGE DES PLANS: Du darfst EXAKT NUR ZWEI WOCHEN ausgeben (Woche 1 und Woche 2). Es ist dir strengstens verboten, Woche 3 oder spätere Wochen zu generieren. Schneide alles danach rigoros ab!
+                        2. Extrahiere die heutige und morgige Einheit.
+                        3. Berechne den Leistungszustand.
+                        VO2MAX-REGEL: Der letzte berechnete VO2max war {aktueller_vo2max}. Passe ihn basierend auf den neuen Strava-Daten maximal um +/- 0.5 Punkte an.
+                        {output_format_alle}
+                        """
+                        
+                        with st.expander("🔍 KI-Inspektor: Gesendeter Wochenplan-Prompt"):
+                            st.code(prompt)
                             
-                            Strava-Historie:\n{st.session_state.strava_context}
-                            
-                            Gib AUSSCHLIESSLICH das JSON-Format aus:
-                            ===STATUS_START===
-                            {{"vo2max": "Zahl", "prognose_5k": "Zeit", "prognose_10k": "Zeit", "prognose_21k": "Zeit", "belastung": "Kurzer Text", "belastung_prozent": "Zahl 0-100"}}
-                            ===STATUS_END===
-                            """
-                            
-                            with st.expander("🔍 KI-Inspektor: Gesendeter Status-Prompt"):
-                                st.code(prompt_status)
-                                
-                            text = ask_gemini_with_retry(client, prompt_status, st.session_state.doc_images)
-                            status_part = text.split("===STATUS_START===")[1].split("===STATUS_END===")[0].strip() if "===STATUS_START===" in text else "{}"
-                            
-                            s_json = json.loads(status_part) if "vo2max" in status_part else {}
-                            s_json["letztes_update"] = datetime.now().strftime("%d.%m.%Y")
-                            
-                            save_all_to_supabase(status_json=s_json)
-                            st.session_state.run_status_update = False
-                            st.rerun()
-                    except Exception as e:
-                        st.error(f"Fehler: {e}")
-                        st.session_state.run_status_update = False
-
-            # ==============================================================================
-            # LOGIK 2: KOMPLETTEN WOCHENPLAN ANPASSEN
-            # ==============================================================================
-            if st.session_state.get("run_update"):
-                if load_and_format_strava_data():
-                    try:
-                        with st.spinner("Berechne adaptiven Wochenplan und speichere in Cloud..."):
-                            prompt = f"""
-                            {zeit_befehl}
-                            
-                            🚨 STRIKTE DATEN- & LOGIK-REGELN:
-                            1. DATUMS-REGEL: Die Strava-Daten sind HISTORIE! Wenn es in dieser Woche bereits vergangene Tage gibt, trage die dort absolvierten Trainings aus den Strava-Daten exakt als "✅ Bereits absolviert" in Woche 1 ein.
-                            2. VALIDIERUNG: Vergleiche jeden Tag im Masterplan mit meinen Strava-Aktivitäten. Markiere als "✅ Bereits absolviert" NUR Tage, an denen ich laut Strava-Daten TATSÄCHLICH trainiert habe. Wenn für einen geplanten Tag KEINE Strava-Aktivität vorliegt, markiere ihn keinesfalls als absolviert!
-                            3. ADAPTION: Wenn ich laut Plan ein Training hatte, aber in Strava nichts dazu steht, markiere es als "❌ Ausgefallen / Nicht absolviert" und schlage eine Anpassung vor.
-                            4. BELASTUNGS-LOGIK: Wenn ich am Di/Mi hart gelaufen bin, ist das Training für morgen (Do) zu streichen oder durch aktive Erholung zu ersetzen. Analysiere meine Belastung der letzten 48h vor jeder Planung!
-                            
-                            Masterplan:\n{st.session_state.trainingsplan}
-                            Strava-Historie:\n{st.session_state.strava_context}
-                            Ziel & Event:\n{ziel_kontext}
-                            Instruktionen:\n{trainer_instructions}
-                            
-                            AUFGABE: 
-                            1. LÄNGE DES PLANS: Du darfst EXAKT NUR ZWEI WOCHEN ausgeben (Woche 1 und Woche 2). Es ist dir strengstens verboten, Woche 3 oder spätere Wochen zu generieren. Schneide alles danach rigoros ab!
-                            2. Extrahiere die heutige und morgige Einheit.
-                            3. Berechne den Leistungszustand.
-                            VO2MAX-REGEL: Der letzte berechnete VO2max war {aktueller_vo2max}. Passe ihn basierend auf den neuen Strava-Daten maximal um +/- 0.5 Punkte an.
-                            {output_format_alle}
-                            """
-                            
-                            with st.expander("🔍 KI-Inspektor: Gesendeter Wochenplan-Prompt"):
-                                st.code(prompt)
-                                
-                            text = ask_gemini_with_retry(client, prompt, st.session_state.doc_images)
-                            
-                            status_part = text.split("===STATUS_START===")[1].split("===STATUS_END===")[0].strip() if "===STATUS_START===" in text else "{}"
-                            h_part = text.split("===HEUTE_START===")[1].split("===HEUTE_END===")[0].strip() if "===HEUTE_START===" in text else ""
-                            m_part = text.split("===MORGEN_START===")[1].split("===MORGEN_END===")[0].strip() if "===MORGEN_START===" in text else ""
-                            w_part = text.split("===WOCHENPLAN_START===")[1].split("===WOCHENPLAN_END===")[0].strip() if "===WOCHENPLAN_START===" in text else ""
-                            w_json_part = text.split("===WEEK_JSON_START===")[1].split("===WEEK_JSON_END===")[0].strip() if "===WEEK_JSON_START===" in text else "[]"
-                            st.session_state.wochenplan_json = w_json_part
-                            
-                            s_json = json.loads(status_part) if "vo2max" in status_part else {}
-                            s_json["letztes_update"] = datetime.now().strftime("%d.%m.%Y")
-                            
-                            save_all_to_supabase(woche_text=w_part, status_json=s_json, heute_text=h_part, morgen_text=m_part)
-                            
-                            st.session_state.run_update = False
-                            st.rerun()
-                    except Exception as e: 
-                        st.error(f"Fehler bei KI-Verarbeitung: {e}")
+                        text = ask_gemini_with_retry(client, prompt, st.session_state.doc_images)
+                        
+                        status_part = text.split("===STATUS_START===")[1].split("===STATUS_END===")[0].strip() if "===STATUS_START===" in text else "{}"
+                        h_part = text.split("===HEUTE_START===")[1].split("===HEUTE_END===")[0].strip() if "===HEUTE_START===" in text else ""
+                        m_part = text.split("===MORGEN_START===")[1].split("===MORGEN_END===")[0].strip() if "===MORGEN_START===" in text else ""
+                        w_part = text.split("===WOCHENPLAN_START===")[1].split("===WOCHENPLAN_END===")[0].strip() if "===WOCHENPLAN_START===" in text else ""
+                        w_json_part = text.split("===WEEK_JSON_START===")[1].split("===WEEK_JSON_END===")[0].strip() if "===WEEK_JSON_START===" in text else "[]"
+                        st.session_state.wochenplan_json = w_json_part
+                        
+                        s_json = json.loads(status_part) if "vo2max" in status_part else {}
+                        s_json["letztes_update"] = datetime.now().strftime("%d.%m.%Y")
+                        
+                        save_all_to_supabase(woche_text=w_part, status_json=s_json, heute_text=h_part, morgen_text=m_part)
+                        
                         st.session_state.run_update = False
-                else: 
-                    st.error("Konnte Strava-Daten nicht laden.")
+                        st.rerun()
+                except Exception as e: 
+                    st.error(f"Fehler bei KI-Verarbeitung: {e}")
                     st.session_state.run_update = False
+            else: 
+                st.error("Konnte Strava-Daten nicht laden.")
+                st.session_state.run_update = False
 
     # --- ANSICHT: MASTERPLAN ---
     elif st.session_state.ansicht == "Masterplan":
