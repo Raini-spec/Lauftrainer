@@ -57,8 +57,10 @@ def load_all_from_supabase():
                 schluessel = row["schluessel"]
                 wert = row["wert"]
                 
+                # Hier gehört deine neue Zeile rein:
                 if schluessel == "trainingsplan": st.session_state.trainingsplan = wert
                 elif schluessel == "wochenplan": st.session_state.wochenplan = wert
+                elif schluessel == "wochenplan_json": st.session_state.wochenplan_json = wert # <--- HIER!
                 elif schluessel == "heute_training": st.session_state.heute_training = wert
                 elif schluessel == "morgen_training": st.session_state.morgen_training = wert
                 elif schluessel == "leistungsstatus":
@@ -67,6 +69,8 @@ def load_all_from_supabase():
                 elif schluessel == "physio_paket":
                     try: st.session_state.physio_data = json.loads(wert)
                     except: pass
+    except Exception as e:
+        pass
     except Exception as e:
         pass
 
